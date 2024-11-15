@@ -4,7 +4,7 @@ import sys
 
 ## Grab instance file from first command line argument
 #data_file = sys.argv[1]
-data_file = "rts_gmlc/2020-01-27.json"
+data_file = "rts_gmlc/2020-02-09.json"
 
 print('loading data')
 
