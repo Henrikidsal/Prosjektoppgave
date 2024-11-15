@@ -237,7 +237,7 @@ print("Model setup complete.")
 print("Solving...")
 sampler = LeapHybridCQMSampler(profile='prod')
 solution = sampler.sample_cqm(cqm, time_limit=180)
-print("Finished solving...")
+print("Finished sampling...")
 
 # Process and display solution
 feasible_sampleset = solution.filter(lambda d: d.is_feasible)
