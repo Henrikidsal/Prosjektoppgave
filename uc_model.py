@@ -156,7 +156,7 @@ from pyomo.opt import SolverFactory
 gurobi = SolverFactory('gurobi')
 
 print("solving")
-gurobi.solve(m, options={'MIPGap': 0.0000001}, tee=True)
+gurobi.solve(m, options={'MIPGap': 0.01}, tee=True)
 
 
 
