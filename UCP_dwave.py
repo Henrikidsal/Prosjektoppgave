@@ -2,7 +2,6 @@
 from dwave.system import LeapHybridCQMSampler
 from dimod import ConstrainedQuadraticModel, Binary, Real
 import json
-from tqdm import tqdm
 import itertools
 
 print("Finished loading")
@@ -14,7 +13,6 @@ data = json.load(open(data_file, 'r'))
 
 Hours = 48
 data["time_periods"] = Hours
-
 
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
@@ -200,8 +198,8 @@ for g, gen in thermal_gens.items():
 
 # Must-run Constraints (11) and other operational constraints
 for g, gen in thermal_gens.items():
-    UT = min(gen['time_up_minimum'], data['time_periods'])
-    DT = min(gen['time_down_minimum'], data['time_periods'])
+    UT_g = min(gen['time_up_minimum'], data['time_periods'])
+    DT_g = min(gen['time_down_minimum'], data['time_periods'])
     for t in time_periods:
         # Must-run Constraint (11)
         cqm.add_constraint(
@@ -225,42 +223,37 @@ for g, gen in thermal_gens.items():
                 ramp_down_expr <= gen['ramp_down_limit'], label=f'ramp_down_{g}_{t}'
             )
 
-        # Uptime Constraints (13)
-        if t >= UT:
-            uptime_expr = (
-                sum(vg[g, tp] for tp in range(t - UT + 1, t + 1)) - ug[g, t]
-            )
-            cqm.add_constraint(
-                uptime_expr <= 0, label=f'uptime_{g}_{t}'
-            )
+    # Uptime Constraints (13)
+    if UT_g > 0:
+        for t in range(min(UT_g, data['time_periods']), data['time_periods'] + 1):
+            uptime_expr = sum(vg[g, tp] for tp in range(t - UT_g + 1, t + 1)) - ug[g, t]
+            cqm.add_constraint(uptime_expr <= 0, label=f'uptime_{g}_{t}')
 
-        # Downtime Constraints (14)
-        if t >= DT:
-            downtime_expr = (
-                sum(wg[g, tp] for tp in range(t - DT + 1, t + 1)) - (1 - ug[g, t])
-            )
-            cqm.add_constraint(
-                downtime_expr <= 0, label=f'downtime_{g}_{t}'
-            )
+    # Downtime Constraints (14)
+    if DT_g > 0:
+        for t in range(min(DT_g, data['time_periods']), data['time_periods'] + 1):
+            downtime_expr = sum(wg[g, tp] for tp in range(t - DT_g + 1, t + 1)) - (1 - ug[g, t])
+            cqm.add_constraint(downtime_expr <= 0, label=f'downtime_{g}_{t}')
 
-        # Startup Allowed Constraints (15)
-        for s in gen_startup_categories[g][:-1]:  # All but last
-            lag_s = gen['startup'][s]['lag']
-            lag_s1 = gen['startup'][s + 1]['lag']
-            if t >= lag_s1:
-                startup_allowed_terms = []
-                for i in range(lag_s, lag_s1):
-                    time_index = t - i
-                    if time_index >= 1 and time_index in time_periods:
-                        startup_allowed_terms.append(wg[g, time_index])
-                if startup_allowed_terms:
-                    startup_allowed_expr = (
-                        dg[g, s, t] - sum(startup_allowed_terms)
-                    )
-                    cqm.add_constraint(
-                        startup_allowed_expr <= 0, label=f'startup_allowed_{g}_{s}_{t}'
-                    )
+    # Startup Allowed Constraints (15)
+    for s in gen_startup_categories[g][:-1]:  # All but last
+        lag_s = gen['startup'][s]['lag']
+        lag_s1 = gen['startup'][s + 1]['lag']
+        for t in range(lag_s1, data['time_periods'] + 1):
+            startup_allowed_terms = []
+            for i in range(lag_s, lag_s1):
+                time_index = t - i
+                if time_index >= 1 and time_index in time_periods:
+                    startup_allowed_terms.append(wg[g, time_index])
+            if startup_allowed_terms:
+                startup_allowed_expr = (
+                    dg[g, s, t] - sum(startup_allowed_terms)
+                )
+                cqm.add_constraint(
+                    startup_allowed_expr <= 0, label=f'startup_allowed_{g}_{s}_{t}'
+                )
 
+    for t in time_periods:
         # Startup Selection Constraint (16)
         startup_select_expr = vg[g, t] - sum(
             dg[g, s, t] for s in gen_startup_categories[g]
