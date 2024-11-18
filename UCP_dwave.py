@@ -3,6 +3,7 @@ from dwave.system import LeapHybridCQMSampler
 from dimod import ConstrainedQuadraticModel, Binary, Real
 import json
 from tqdm import tqdm
+import itertools
 
 print("Finished loading")
 
@@ -11,14 +12,27 @@ data_file = "rts_gmlc/2020-01-27.json"
 print('Loading data...')
 data = json.load(open(data_file, 'r'))
 
+
+Hours=48
+data["time_periods"]=Hours
+
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
 renewable_gens = data['renewable_generators']
-data['time_periods'] = 1  # Reduced time periods for testing
 time_periods = {t + 1: t for t in range(data['time_periods'])}
+time_periods = dict(itertools.islice(time_periods.items(), Hours))
+
+#data["demand"]=data["demand"][:HOURS_TO_RUN]
+#data["reserves"]=data["reserves"][:HOURS_TO_RUN]
 
 gen_startup_categories = {g: list(range(len(gen['startup']))) for g, gen in thermal_gens.items()}
 gen_pwl_points = {g: list(range(len(gen['piecewise_production']))) for g, gen in thermal_gens.items()}
+num_pwl_points = 4 # Define the number of piecewise linear points you want to use
+gen_pwl_points = {
+    g: list(range(min(num_pwl_points, len(gen['piecewise_production']))))
+    for g, gen in thermal_gens.items()
+}
+
 
 print('Building model...')
 # Initialize the Constrained Quadratic Model (CQM)
@@ -38,7 +52,6 @@ wg = {}  # Unit shutdown
 dg = {}
 # Continuous Variables for piecewise linear generation
 lg = {}
-
 # Variables for renewable generators
 pw = {}  # Power generation
 
@@ -99,20 +112,21 @@ for g, gen in thermal_gens.items():
     if gen['unit_on_t0'] == 1:
         if gen['time_up_minimum'] - gen['time_up_t0'] >= 1:
             UT = min(gen['time_up_minimum'] - gen['time_up_t0'], data['time_periods'])
-            uptime_expr = sum((ug[g, t] - 1) for t in range(1, UT + 1))
-            if uptime_expr != 0:
+            if UT >= 1:
+                uptime_expr = sum((ug[g, t] - 1) for t in range(1, UT + 1))
                 cqm.add_constraint(uptime_expr == 0, label=f'uptime_{g}_t0')
     elif gen['unit_on_t0'] == 0:
         if gen['time_down_minimum'] - gen['time_down_t0'] >= 1:
             DT = min(gen['time_down_minimum'] - gen['time_down_t0'], data['time_periods'])
-            downtime_expr = sum(ug[g, t] for t in range(1, DT + 1))
-            if downtime_expr != 0:
+            if DT >= 1:
+                downtime_expr = sum(ug[g, t] for t in range(1, DT + 1))
                 cqm.add_constraint(downtime_expr == 0, label=f'downtime_{g}_t0')
     else:
         raise Exception(f'Invalid unit_on_t0 for generator {g}, unit_on_t0={gen["unit_on_t0"]}')
 
     # Logical Constraints at t=1 (6)
-    cqm.add_constraint(ug[g, 1] - vg[g, 1] + wg[g, 1] == gen['unit_on_t0'], label=f'logical_{g}_t0')
+    expr = ug[g, 1] - vg[g, 1] + wg[g, 1] - gen['unit_on_t0']
+    cqm.add_constraint(expr == 0, label=f'logical_{g}_t0')
 
     # Startup Allowed Constraints at t=0 (7)
     startup_terms = []
@@ -139,8 +153,7 @@ for g, gen in thermal_gens.items():
     # Shutdown Constraint at t=1 (10)
     Pmax = gen['power_output_maximum'] - gen['power_output_minimum']
     ramp_sd_limit = max((gen['power_output_maximum'] - gen['ramp_shutdown_limit']), 0)
-    shutdown_expr = gen['unit_on_t0'] * (gen['power_output_t0'] - gen['power_output_minimum'])
-    shutdown_expr -= gen['unit_on_t0'] * Pmax - ramp_sd_limit * wg[g, 1]
+    shutdown_expr = gen['unit_on_t0'] * (gen['power_output_t0'] - gen['power_output_minimum']) - (gen['unit_on_t0'] * Pmax - ramp_sd_limit * wg[g, 1])
     cqm.add_constraint(shutdown_expr <= 0, label=f'shutdown_{g}_t0')
 
 # Must-run Constraints (11) and other operational constraints
@@ -151,7 +164,8 @@ for g, gen in thermal_gens.items():
 
         if t > 1:
             # Logical Constraint (12)
-            cqm.add_constraint(ug[g, t] - ug[g, t - 1] == vg[g, t] - wg[g, t], label=f'logical_{g}_{t}')
+            expr = ug[g, t] - ug[g, t - 1] - vg[g, t] + wg[g, t]
+            cqm.add_constraint(expr == 0, label=f'logical_{g}_{t}')
 
             # Ramp Up Limit (19)
             ramp_up_expr = pg[g, t] + rg[g, t] - pg[g, t - 1]
@@ -162,18 +176,16 @@ for g, gen in thermal_gens.items():
             cqm.add_constraint(ramp_down_expr <= gen['ramp_down_limit'], label=f'ramp_down_{g}_{t}')
 
         # Uptime Constraints (13)
-        UT = gen['time_up_minimum']
+        UT = min(gen['time_up_minimum'], data['time_periods'])
         if t >= UT:
             uptime_expr = sum(vg[g, tp] for tp in range(t - UT + 1, t + 1)) - ug[g, t]
-            if uptime_expr != 0:
-                cqm.add_constraint(uptime_expr <= 0, label=f'uptime_{g}_{t}')
+            cqm.add_constraint(uptime_expr <= 0, label=f'uptime_{g}_{t}')
 
         # Downtime Constraints (14)
-        DT = gen['time_down_minimum']
+        DT = min(gen['time_down_minimum'], data['time_periods'])
         if t >= DT:
             downtime_expr = sum(wg[g, tp] for tp in range(t - DT + 1, t + 1)) - (1 - ug[g, t])
-            if downtime_expr != 0:
-                cqm.add_constraint(downtime_expr <= 0, label=f'downtime_{g}_{t}')
+            cqm.add_constraint(downtime_expr <= 0, label=f'downtime_{g}_{t}')
 
         # Startup Selection Constraint (16)
         startup_select_expr = vg[g, t] - sum(dg[g, s, t] for s in gen_startup_categories[g])
@@ -190,17 +202,20 @@ for g, gen in thermal_gens.items():
 
         # Generation Limit Constraint 2 (18)
         if t < data['time_periods']:
-            gen_limit_expr2 = pg[g, t] + rg[g, t] - (Pmax * ug[g, t] - ramp_sd_limit * wg[g, t + 1])
+            next_t = t + 1
+            gen_limit_expr2 = pg[g, t] + rg[g, t] - (Pmax * ug[g, t] - ramp_sd_limit * wg[g, next_t])
             cqm.add_constraint(gen_limit_expr2 <= 0, label=f'gen_limit2_{g}_{t}')
 
         # Power Selection Constraint (21)
         piece_mw0 = gen['piecewise_production'][0]['mw']
-        power_select_expr = pg[g, t] - sum((gen['piecewise_production'][l]['mw'] - piece_mw0) * lg[g, l, t] for l in gen_pwl_points[g])
+        power_select_expr = pg[g, t] - sum(
+            (gen['piecewise_production'][l]['mw'] - piece_mw0) * lg[g, l, t] for l in gen_pwl_points[g])
         cqm.add_constraint(power_select_expr == 0, label=f'power_select_{g}_{t}')
 
         # Cost Selection Constraint (22)
         piece_cost0 = gen['piecewise_production'][0]['cost']
-        cost_select_expr = cg[g, t] - sum((gen['piecewise_production'][l]['cost'] - piece_cost0) * lg[g, l, t] for l in gen_pwl_points[g])
+        cost_select_expr = cg[g, t] - sum(
+            (gen['piecewise_production'][l]['cost'] - piece_cost0) * lg[g, l, t] for l in gen_pwl_points[g])
         cqm.add_constraint(cost_select_expr == 0, label=f'cost_select_{g}_{t}')
 
         # On Selection Constraint (23)
@@ -231,12 +246,13 @@ for w, gen in renewable_gens.items():
         cqm.add_constraint(pw[w, t] >= pw_min, label=f'renewable_min_{w}_{t}')
         cqm.add_constraint(pw[w, t] <= pw_max, label=f'renewable_max_{w}_{t}')
 
-# Solve the CQM
 print("Model setup complete.")
-
+print(f"Number of variables: {len(cqm.variables)}")
+print(f"Number of constraints: {len(cqm.constraints)}")
+# Solve the CQM
 print("Solving...")
-sampler = LeapHybridCQMSampler(profile='prod')
-solution = sampler.sample_cqm(cqm, time_limit=180)
+sampler = LeapHybridCQMSampler()
+solution = sampler.sample_cqm(cqm, time_limit=400)
 print("Finished sampling...")
 
 # Process and display solution
@@ -245,9 +261,9 @@ if len(feasible_sampleset) > 0:
     best_solution = feasible_sampleset.first
     print("Feasible solution found with energy:", best_solution.energy)
     # Extract the variable values
-    #sample = best_solution.sample
+    # sample = best_solution.sample
     # Print the variable values
-    #for var, val in sample.items():
-        #print(f"{var}: {val}")
+    # for var, val in sample.items():
+    #     print(f"{var}: {val}")
 else:
     print("No feasible solution found.")
