@@ -23,7 +23,7 @@ time_periods = dict(itertools.islice(time_periods.items(), Hours))
 gen_startup_categories = {
     g: list(range(len(gen['startup']))) for g, gen in thermal_gens.items()
 }
-num_pwl_points = 4  # Define the number of piecewise linear points you want to use
+num_pwl_points = 4  # Define the number of piecewise linear points
 gen_pwl_points = {
     g: list(range(min(num_pwl_points, len(gen['piecewise_production']))))
     for g, gen in thermal_gens.items()
