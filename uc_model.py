@@ -11,7 +11,7 @@ print('loading data')
 
 data = json.load(open(data_file, 'r'))
 
-Hours = 2
+Hours = 48
 data["time_periods"] = Hours
 
 # Extract data for generators and time periods
@@ -21,7 +21,7 @@ time_periods = {t + 1: t for t in range(data['time_periods'])}
 time_periods = dict(itertools.islice(time_periods.items(), Hours))
 
 gen_startup_categories = {g: list(range(len(gen['startup']))) for g, gen in thermal_gens.items()}
-num_pwl_points = 1  # Define the number of piecewise linear points
+num_pwl_points = 4  # Define the number of piecewise linear points
 gen_pwl_points = {
     g: list(range(min(num_pwl_points, len(gen['piecewise_production']))))
     for g, gen in thermal_gens.items()
