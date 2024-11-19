@@ -161,14 +161,6 @@ for w, gen in renewable_gens.items():
 
 print("model setup complete")
 
-# Print the number of variables
-num_variables = sum(1 for v in model.component_data_objects(Var, active=True))
-print(f"Number of variables: {num_variables}")
-
-# Print the number of constraints
-num_constraints = sum(1 for c in model.component_data_objects(Constraint, active=True))
-print(f"Number of constraints: {num_constraints}")
-
 from pyomo.opt import SolverFactory
 gurobi = SolverFactory('gurobi')
 
