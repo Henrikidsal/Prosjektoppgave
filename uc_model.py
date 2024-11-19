@@ -1,6 +1,7 @@
 from pyomo.environ import *
 import json
 import sys
+import itertools
 
 ## Grab instance file from first command line argument
 #data_file = sys.argv[1]
@@ -10,13 +11,21 @@ print('loading data')
 
 data = json.load(open(data_file, 'r'))
 
+Hours = 48
+data["time_periods"] = Hours
+
+# Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
 renewable_gens = data['renewable_generators']
+time_periods = {t + 1: t for t in range(data['time_periods'])}
+time_periods = dict(itertools.islice(time_periods.items(), Hours))
 
-time_periods = {t+1 : t for t in range(data['time_periods'])}
-
-gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) in thermal_gens.items()}
-gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
+gen_startup_categories = {g: list(range(len(gen['startup']))) for g, gen in thermal_gens.items()}
+num_pwl_points = 4  # Define the number of piecewise linear points
+gen_pwl_points = {
+    g: list(range(min(num_pwl_points, len(gen['piecewise_production']))))
+    for g, gen in thermal_gens.items()
+}
 
 print('building model')
 m = ConcreteModel()
