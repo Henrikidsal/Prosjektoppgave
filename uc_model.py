@@ -162,6 +162,7 @@ for w, gen in renewable_gens.items():
 
 print("model setup complete")
 m.pprint()
+print("done")
 exit()
 
 from pyomo.opt import SolverFactory
