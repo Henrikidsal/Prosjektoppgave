@@ -12,7 +12,7 @@ print('loading data')
 
 data = json.load(open(data_file, 'r'))
 
-Hours = 12
+Hours = 48
 data["time_periods"] = Hours
 
 # Extract data for generators and time periods
@@ -161,12 +161,14 @@ for w, gen in renewable_gens.items():
         m.pw[w,t].setub(gen['power_output_maximum'][t_idx]) #(24)
 
 print("model setup complete")
+m.pprint()
+exit()
 
 from pyomo.opt import SolverFactory
 gurobi = SolverFactory('gurobi')
 
 print("solving")
-gurobi.solve(m, options={'MIPGap': 0.01}, tee=True)
+#gurobi.solve(m, options={'MIPGap': 0.01}, tee=True)
 
 
 
