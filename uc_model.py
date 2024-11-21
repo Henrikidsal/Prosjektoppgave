@@ -12,7 +12,7 @@ print('loading data')
 
 data = json.load(open(data_file, 'r'))
 
-Hours = 48
+Hours = 12
 data["time_periods"] = Hours
 
 # Extract data for generators and time periods
