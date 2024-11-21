@@ -3,6 +3,7 @@ import json
 import sys
 import itertools
 
+
 ## Grab instance file from first command line argument
 #data_file = sys.argv[1]
 data_file = "rts_gmlc/2020-01-27.json"
@@ -11,7 +12,7 @@ print('loading data')
 
 data = json.load(open(data_file, 'r'))
 
-Hours = 48
+Hours = 12
 data["time_periods"] = Hours
 
 # Extract data for generators and time periods
