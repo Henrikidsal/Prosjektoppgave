@@ -161,15 +161,15 @@ for w, gen in renewable_gens.items():
         m.pw[w,t].setub(gen['power_output_maximum'][t_idx]) #(24)
 
 print("model setup complete")
-#m.pprint()
-#print("done")
-#exit()
+num_constraints = sum(len(constraint) for constraint in model.component_objects(Constraint, active=True))
+print(f"Number of constraints: {num_constraints}")
+
 
 from pyomo.opt import SolverFactory
 gurobi = SolverFactory('gurobi')
 
 print("solving")
-gurobi.solve(m, options={'MIPGap': 0.01}, tee=True)
+#gurobi.solve(m, options={'MIPGap': 0.01}, tee=True)
 
 
 
