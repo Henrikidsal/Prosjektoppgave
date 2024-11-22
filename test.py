@@ -10,7 +10,7 @@ print('loading data')
 data = json.load(open(data_file, 'r'))
 
 num_pwl_points = 4 #The number of linear points you want
-HOURS = 48 #The number of time periods you want
+HOURS = 12 #The number of time periods you want
 
 
 thermal_gens = data['thermal_generators']
