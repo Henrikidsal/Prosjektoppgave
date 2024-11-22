@@ -9,7 +9,7 @@ print('loading data')
 
 data = json.load(open(data_file, 'r'))
 
-num_pwl_points = 4 #The number of linear points you want (one more than segments)
+#num_pwl_points = 4 #The number of linear points you want (one more than segments)
 HOURS = 48 #The number of time periods you want
 data['time_periods'] = HOURS
 
@@ -20,10 +20,10 @@ time_periods = {t+1 : t for t in range(HOURS)}
 
 gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) in thermal_gens.items()}
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
-gen_pwl_points = {
+"""gen_pwl_points = {
     g: list(range(0, min(len(gen['piecewise_production']), num_pwl_points)))
     for g, gen in thermal_gens.items()
-}
+}"""
 
 print('building model')
 m = ConcreteModel()
