@@ -21,12 +21,10 @@ time_periods = dict(itertools.islice(time_periods.items(), HOURS))
 
 gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) in thermal_gens.items()}
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
-gen_pwl_points = dict(itertools.islice(gen_pwl_points.items(), num_pwl_points))
-#gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
-#gen_pwl_points = {
- #   g: list(range(0, min(len(gen['piecewise_production']), num_pwl_points)))
-  #  for g, gen in thermal_gens.items()
-#}
+gen_pwl_points = {
+    g: list(range(0, min(len(gen['piecewise_production']), num_pwl_points)))
+    for g, gen in thermal_gens.items()
+}
 
 print('building model')
 m = ConcreteModel()
@@ -68,10 +66,10 @@ m.shutdownt0 = Constraint(thermal_gens.keys())
 for g, gen in thermal_gens.items():
     if gen['unit_on_t0'] == 1:
         if gen['time_up_minimum'] - gen['time_up_t0'] >= 1:
-            m.uptimet0[g] = sum( (m.ug[g,t] - 1) for t in range(1, min(gen['time_up_minimum'] - gen['time_up_t0'], data['time_periods'])+1)) == 0 #(4)
+            m.uptimet0[g] = sum( (m.ug[g,t] - 1) for t in range(1, min(gen['time_up_minimum'] - gen['time_up_t0'], HOURS)+1)) == 0 #(4)
     elif gen['unit_on_t0'] == 0:
         if gen['time_down_minimum'] - gen['time_down_t0'] >= 1:
-            m.downtimet0[g] = sum( m.ug[g,t] for t in range(1, min(gen['time_down_minimum'] - gen['time_down_t0'], data['time_periods'])+1)) == 0 #(5)
+            m.downtimet0[g] = sum( m.ug[g,t] for t in range(1, min(gen['time_down_minimum'] - gen['time_down_t0'], HOURS)+1)) == 0 #(5)
     else:
         raise Exception('Invalid unit_on_t0 for generator {}, unit_on_t0={}'.format(g, gen['unit_on_t0']))
 
@@ -81,7 +79,7 @@ for g, gen in thermal_gens.items():
                         sum( m.dg[g,s,t] 
                                 for t in range(
                                                 max(1,gen['startup'][s+1]['lag']-gen['time_down_t0']+1),
-                                                min(gen['startup'][s+1]['lag']-1,data['time_periods'])+1
+                                                min(gen['startup'][s+1]['lag']-1,HOURS)+1
                                               )
                             ) 
                        for s,_ in enumerate(gen['startup'][:-1])) ## all but last
@@ -122,10 +120,10 @@ for g, gen in thermal_gens.items():
         if t > 1:
             m.logical[g,t] = m.ug[g,t] - m.ug[g,t-1] == m.vg[g,t] - m.wg[g,t] #(12)
 
-        UT = min(gen['time_up_minimum'],data['time_periods'])
+        UT = min(gen['time_up_minimum'],HOURS)
         if t >= UT:
             m.uptime[g,t] = sum(m.vg[g,t] for t in range(t-UT+1, t+1)) <= m.ug[g,t] #(13)
-        DT = min(gen['time_down_minimum'],data['time_periods'])
+        DT = min(gen['time_down_minimum'],HOURS)
         if t >= DT:
             m.downtime[g,t] = sum(m.wg[g,t] for t in range(t-DT+1, t+1)) <= 1-m.ug[g,t] #(14)
         m.startup_select[g,t] = m.vg[g,t] == sum(m.dg[g,s,t] for s,_ in enumerate(gen['startup'])) #(16)
