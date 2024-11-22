@@ -146,7 +146,7 @@ for g, gen in thermal_gens.items():
 #m.dg_index = Set(initialize=[(g, s, t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods])
 
 
-m.startup_allowed = Constraint(m.dg_index)
+m.startup_allowed = Constraint(m.dg.index_set())
 for g, gen in thermal_gens.items():
     for s,_ in enumerate(gen['startup'][:-1]): ## all but last
         for t in time_periods:
