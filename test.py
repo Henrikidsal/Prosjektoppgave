@@ -21,7 +21,10 @@ time_periods = dict(itertools.islice(time_periods.items(), HOURS))
 
 gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) in thermal_gens.items()}
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
-gen_pwl_points = dict(itertools.islice(gen_pwl_points.items(), num_pwl_points))
+gen_pwl_points = {
+    g: list(range(0, min(len(gen['piecewise_production']), num_pwl_points)))
+    for g, gen in thermal_gens.items()
+}
 
 print('building model')
 m = ConcreteModel()
