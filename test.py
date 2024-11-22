@@ -140,6 +140,9 @@ for g, gen in thermal_gens.items():
         m.cost_select[g,t] = m.cg[g,t] == sum( (piece['cost'] - piece_cost1)*m.lg[g,l,t] for l,piece in enumerate(gen['piecewise_production'])) #(22)
         m.on_select[g,t] = m.ug[g,t] == sum(m.lg[g,l,t] for l,_ in enumerate(gen['piecewise_production'])) #(23)
 
+m.dg_index = Set(initialize=[(g, s, t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods])
+
+
 m.startup_allowed = Constraint(m.dg_index)
 for g, gen in thermal_gens.items():
     for s,_ in enumerate(gen['startup'][:-1]): ## all but last
