@@ -62,8 +62,6 @@ m.rampupt0 = Constraint(thermal_gens.keys())
 m.rampdownt0 = Constraint(thermal_gens.keys())
 m.shutdownt0 = Constraint(thermal_gens.keys())
 
-print(data['time_periods'])
-
 for g, gen in thermal_gens.items():
     if gen['unit_on_t0'] == 1:
         if gen['time_up_minimum'] - gen['time_up_t0'] >= 1:
@@ -163,7 +161,7 @@ from pyomo.opt import SolverFactory
 gurobi = SolverFactory('gurobi')
 
 print("solving")
-result = gurobi.solve(m, options={'ratioGap':0.01}, tee=False)
+result = gurobi.solve(m, options={'MIPGap':0.01}, tee=False)
 
 num_variables = sum(1 for _ in m.component_data_objects(Var, active=True))
 print(f"Number of variables: {num_variables}")
