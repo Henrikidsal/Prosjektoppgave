@@ -21,10 +21,12 @@ time_periods = dict(itertools.islice(time_periods.items(), HOURS))
 
 gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) in thermal_gens.items()}
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
-gen_pwl_points = {
-    g: list(range(0, min(len(gen['piecewise_production']), num_pwl_points)))
-    for g, gen in thermal_gens.items()
-}
+gen_pwl_points = dict(itertools.islice(gen_pwl_points.items(), num_pwl_points))
+#gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
+#gen_pwl_points = {
+ #   g: list(range(0, min(len(gen['piecewise_production']), num_pwl_points)))
+  #  for g, gen in thermal_gens.items()
+#}
 
 print('building model')
 m = ConcreteModel()
@@ -142,8 +144,6 @@ for g, gen in thermal_gens.items():
         m.power_select[g,t] = m.pg[g,t] == sum( (piece['mw'] - piece_mw1)*m.lg[g,l,t] for l,piece in enumerate(gen['piecewise_production'])) #(21)
         m.cost_select[g,t] = m.cg[g,t] == sum( (piece['cost'] - piece_cost1)*m.lg[g,l,t] for l,piece in enumerate(gen['piecewise_production'])) #(22)
         m.on_select[g,t] = m.ug[g,t] == sum(m.lg[g,l,t] for l,_ in enumerate(gen['piecewise_production'])) #(23)
-
-#m.dg_index = Set(initialize=[(g, s, t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods])
 
 
 m.startup_allowed = Constraint(m.dg.index_set())
