@@ -1,25 +1,24 @@
 from pyomo.environ import *
 import json
 
-## Grab instance file from first command line argument
+
+
+# Load data
 data_file = "rts_gmlc/2020-01-27.json"
-
 print('loading data')
-
 data = json.load(open(data_file, 'r'))
 
 HOURS = 48 #The number of time periods you want
 data['time_periods'] = HOURS
 
+# Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
 renewable_gens = data['renewable_generators']
-
 time_periods = {t+1 : t for t in range(HOURS)}
-
 gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) in thermal_gens.items()}
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
 
-print('building model')
+print('Building model...')
 m = ConcreteModel()
 
 m.cg = Var(thermal_gens.keys(), time_periods.keys())
@@ -29,7 +28,6 @@ m.pw = Var(renewable_gens.keys(), time_periods.keys(), within=NonNegativeReals)
 m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
 m.vg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
 m.wg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
-
 m.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary) ##
 m.lg = Var(((g,l,t) for g in thermal_gens for l in gen_pwl_points[g] for t in time_periods), within=UnitInterval) ##
 
