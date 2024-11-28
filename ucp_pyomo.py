@@ -1,7 +1,6 @@
 from pyomo.environ import *
 import json
-
-
+from pyomo.opt import SolverFactory
 
 # Load data
 data_file = "rts_gmlc/2020-01-27.json"
@@ -32,12 +31,12 @@ m.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for
 m.lg = Var(((g,l,t) for g in thermal_gens for l in gen_pwl_points[g] for t in time_periods), within=UnitInterval) ##
 
 m.obj = Objective(expr=sum(
-                          sum(
-                              m.cg[g,t] + gen['piecewise_production'][0]['cost']*m.ug[g,t]
-                              + sum( gen_startup['cost']*m.dg[g,s,t] for (s, gen_startup) in enumerate(gen['startup']))
-                          for t in time_periods)
-                        for g, gen in thermal_gens.items() )
-                        ) #(1)
+                sum(
+                    m.cg[g,t] + gen['piecewise_production'][0]['cost']*m.ug[g,t]
+                    + sum( gen_startup['cost']*m.dg[g,s,t] for (s, gen_startup) in enumerate(gen['startup']))
+                for t in time_periods)
+            for g, gen in thermal_gens.items() )
+            ) #(1)
 
 m.demand = Constraint(time_periods.keys())
 m.reserves = Constraint(time_periods.keys())
@@ -69,7 +68,7 @@ for g, gen in thermal_gens.items():
     startup_expr = sum( 
                         sum( m.dg[g,s,t] 
                                 for t in range(
-                                                max(1,gen['startup'][s+1]['lag']-gen['time_down_t0']+1),
+                                                max(1, gen['startup'][s+1]['lag']-gen['time_down_t0']+1),
                                                 min(gen['startup'][s+1]['lag']-1, data['time_periods'])+1
                                               )
                             )
@@ -82,7 +81,6 @@ for g, gen in thermal_gens.items():
     m.rampupt0[g] = m.pg[g,1] + m.rg[g,1] - gen['unit_on_t0']*(gen['power_output_t0']-gen['power_output_minimum']) <= gen['ramp_up_limit'] #(8)
 
     m.rampdownt0[g] = gen['unit_on_t0']*(gen['power_output_t0']-gen['power_output_minimum']) - m.pg[g,1] <= gen['ramp_down_limit'] #(9)
-
 
     shutdown_constr = gen['unit_on_t0']*(gen['power_output_t0']-gen['power_output_minimum']) <= gen['unit_on_t0']*(gen['power_output_maximum'] - gen['power_output_minimum']) - max((gen['power_output_maximum'] - gen['ramp_shutdown_limit']),0)*m.wg[g,1] #(10)
 
@@ -149,7 +147,6 @@ for w, gen in renewable_gens.items():
 
 print("model setup complete")
 
-from pyomo.opt import SolverFactory
 gurobi = SolverFactory('gurobi')
 
 print("solving")
