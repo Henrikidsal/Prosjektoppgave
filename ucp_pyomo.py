@@ -160,3 +160,8 @@ print(f"Number of constraints: {num_constraints}")
 
 m.solutions.load_from(result)
 print(f"Objective function value: {value(m.obj)}")
+
+print("Values of cg:")
+for g in thermal_gens.keys():
+    for t in time_periods.keys():
+        print(f"cg[{g}, {t}] = {m.cg[g, t].value}")
