@@ -22,14 +22,9 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     #Slack variables to make the problem feasable
     m.slack_demand = Var(time_periods.keys(), within=NonNegativeReals)
     m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
-    PENALTY = 1e12
+    PENALTY = 1e7
 
     #The variables from the master problem, an alternative way of using Variables that i fix is below
-    '''
-    m.ug = Param(thermal_gens.keys(), time_periods.keys(), initialize=master_solution['ug'])
-    m.vg = Param(thermal_gens.keys(), time_periods.keys(), initialize=master_solution['vg'])
-    m.wg = Param(thermal_gens.keys(), time_periods.keys(), initialize=master_solution['wg'])
-    '''
     m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
     m.vg = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
     m.wg = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
@@ -97,8 +92,8 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
 
     #solves sub problem
     solver = SolverFactory('gurobi')
-    solver.options['OutputFlag'] = 0
-    solver.options['DualReductions'] = 0
+    #solver.options['OutputFlag'] = 0
+    #solver.options['DualReductions'] = 0
     solver.solve(m, tee=False)
     sub_cost = pyo.value(m.obj)
 
@@ -114,5 +109,7 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
                 dual_values[(constr_name, index)] = dual
     except KeyError as e:
         print(f"Error accessing duals: {e}")
-    #returning the model, dual values goes to cuts, sub_cost goes to master for creating UB
+    #print("du: ", dual_values)
+
+    #dual values goes to cuts, sub_cost goes to master for creating UB
     return dual_values, sub_cost

@@ -19,7 +19,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
     master.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary)
 
     #The theta variable that should be representing the sub problem cost
-    master.theta = Var(bounds=(-1e1, None), within=Reals)
+    master.theta = Var(bounds=(-10, None), within=Reals)
 
     #Master problem objective function
     master.obj = Objective(expr=sum(
@@ -36,6 +36,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
     master.downtimet0 = Constraint(thermal_gens.keys())
     master.logicalt0 = Constraint(thermal_gens.keys())
     master.startupt0 = Constraint(thermal_gens.keys())
+    master.shutdownt0 = Constraint(thermal_gens.keys())
 
     for g, gen in thermal_gens.items():
         if gen['unit_on_t0'] == 1:
@@ -61,6 +62,13 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
         pass
     else:
         master.startupt0[g] = startup_expr == 0 #(7)
+
+    shutdown_constr = gen['unit_on_t0']*(gen['power_output_t0']-gen['power_output_minimum']) <= gen['unit_on_t0']*(gen['power_output_maximum'] - gen['power_output_minimum']) - max((gen['power_output_maximum'] - gen['ramp_shutdown_limit']),0)*master.wg[g,1]
+
+    if isinstance(shutdown_constr, bool):
+        pass
+    else:
+        master.shutdownt0[g] = shutdown_constr  #(10)
 
     master.mustrun = Constraint(thermal_gens.keys(), time_periods.keys())
     master.logical = Constraint(thermal_gens.keys(), time_periods.keys())
@@ -94,7 +102,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
 
     # Iterative Benders Decomposition
     max_iterations = 60
-    tolerance = 1e3
+    tolerance = 100
     iteration = 0
     convergence = False
     upper_bound = float('inf')
