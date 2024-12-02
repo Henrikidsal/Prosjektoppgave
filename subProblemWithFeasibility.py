@@ -4,13 +4,13 @@ from pyomo.environ import *
 from pyomo.opt import SolverFactory
 import pyomo.environ as pyo
 from pyomo.environ import Suffix
+from pyomo.opt import TerminationCondition
+
 
 # Subproblem
 def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods, gen_pwl_points):
 
     m = ConcreteModel()
-
-    #this is for collecting dual variables
     m.dual = Suffix(direction=Suffix.IMPORT)
 
     #sub problem variables
@@ -23,16 +23,12 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     #Slack variables to make the problem feasable
     m.slack_demand = Var(time_periods.keys(), within=NonNegativeReals)
     m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
-    PENALTY = 1e9
-
-    #The variables from the master problem, an alternative way of using Variables that i fix is below
-    m.ug = Param(thermal_gens.keys(), time_periods.keys(), initialize=master_solution['ug'])
-    m.vg = Param(thermal_gens.keys(), time_periods.keys(), initialize=master_solution['vg'])
-    m.wg = Param(thermal_gens.keys(), time_periods.keys(), initialize=master_solution['wg'])
-    '''
-    m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
-    m.vg = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
-    m.wg = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
+    PENALTY = 1e6
+    
+    # Replace Param with Var
+    m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=Binary)
+    m.vg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary)
+    m.wg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary)
 
     # Fix variables to master solution values
     for g in thermal_gens.keys():
@@ -40,11 +36,11 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
             m.ug[g, t].fix(master_solution['ug'][g, t])
             m.vg[g, t].fix(master_solution['vg'][g, t])
             m.wg[g, t].fix(master_solution['wg'][g, t])
-    '''
-    # Objective Function 
-    m.obj = Objective(expr= sum(sum(m.cg[g, t] for t in time_periods) for g in thermal_gens) + PENALTY * (sum(m.slack_demand[t] for t in time_periods) + sum(m.slack_reserve[t] for t in time_periods)))
 
-    # Constraints (Pretty sure these are correct, since they are the same as in a different formulation without benders)
+    # Objective Function
+    m.obj = Objective(expr=sum(sum(m.cg[g, t] for t in time_periods) for g in thermal_gens)+ PENALTY * (sum(m.slack_demand[t] for t in time_periods) + sum(m.slack_reserve[t] for t in time_periods)))
+
+    # Constraints
     m.demand = Constraint(time_periods.keys())
     m.reserves = Constraint(time_periods.keys())
     for t,t_idx in time_periods.items():
@@ -84,22 +80,26 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
             m.pw[w,t].setlb(gen['power_output_minimum'][t_idx]) #(24)
             m.pw[w,t].setub(gen['power_output_maximum'][t_idx]) #(24)
 
-    #solves sub problem
+    #Collecting dual variables
     solver = SolverFactory('gurobi')
     solver.options['OutputFlag'] = 0
     solver.options['DualReductions'] = 0
     solver.solve(m, tee=False)
-    
-    #This is to prevent the UB to be updated when sub problem is infeasable
-    total_slack = sum(pyo.value(m.slack_demand[t]) + pyo.value(m.slack_reserve[t]) for t in time_periods)
-    if total_slack > 1e-6:
-        sub_cost = 1e9
-    else:
-        sub_cost = pyo.value(sum(sum(m.cg[g, t] for t in time_periods) for g in thermal_gens))
-    
-    #This is collecting the dual values in a dictionary
+    sub_problem_status = True
     dual_values = {}
-    relevant_constraints = [m.demand, m.gen_limit1, m.gen_limit2, m.on_select]
+
+    # Determine subproblem feasibility based on slack variables
+    total_slack = sum(pyo.value(m.slack_demand[t]) + pyo.value(m.slack_reserve[t]) for t in time_periods)
+    total_slack = 0
+    if total_slack > 1e-6:  # Use a small threshold to account for numerical precision
+        sub_problem_status = False
+        relevant_constraints = [m.demand, m.reserves]
+    else:
+        sub_problem_status = True
+        relevant_constraints = [m.demand, m.gen_limit1, m.gen_limit2, m.on_select]
+
+    dual_values = {}
+
     try:
         for constraint in relevant_constraints:
             constr_name = constraint.local_name
@@ -110,5 +110,4 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     except KeyError as e:
         print(f"Error accessing duals: {e}")
 
-    #returning the model, dual values goes to cuts, sub_cost goes to master for creating UB
-    return dual_values, sub_cost
+    return m, dual_values, sub_problem_status 

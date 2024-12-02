@@ -1,117 +1,75 @@
-# benders_cuts.py
-
 from pyomo.environ import *
-import pyomo.environ as pyo
 
-def generate_benders_cut(master, thermal_gens, time_periods, master_solution, subproblem_model, dual_values, solver_status):
+def generate_benders_cut(master, thermal_gens, time_periods, dual_values, sub_cost, master_solution):
 
-    if not solver_status:
-        print('Generating feasibility cut.')
-        # Construct the feasibility cut
 
-        # Initialize the cut expression
-        cut_expr = 0
+    lhs_expr = master.theta
+    rhs_expr = sub_cost
 
-        # Loop over dual variables from the feasibility dual problem
-        for (var_name, index), dual_value in dual_values.items():
-            if dual_value is None or abs(dual_value) < 1e-6:
+    # Demand constraints
+    for t in time_periods.keys():
+        constraint_name = 'demand'
+        index = t
+        dual = dual_values.get((constraint_name, index), 0)
+        if abs(dual) < 1e-6:
+            continue
+
+        for g, gen in thermal_gens.items():
+            lhs_expr -= dual * gen['power_output_minimum'] * master.ug[g, t]
+            rhs_expr -= dual * gen['power_output_minimum'] * master_solution['ug'][g, t]
+
+    # On-Select constraints
+    for g in thermal_gens.keys():
+        for t in time_periods.keys():
+            constraint_name = 'on_select'
+            index = (g, t)
+            dual = dual_values.get((constraint_name, index), 0)
+            if abs(dual) < 1e-6:
                 continue
 
-            # The dual variables are associated with the constraints fixing the master variables
-            # These constraints are of the form m.ug[g,t] == master_solution['ug'][g,t], etc.
-            if var_name == 'fix_ug':
-                g, t = index
-                cut_expr += dual_value * (master.ug[g, t] - master_solution['ug'][(g, t)])
-            elif var_name == 'fix_vg':
-                g, t = index
-                cut_expr += dual_value * (master.vg[g, t] - master_solution['vg'][(g, t)])
-            elif var_name == 'fix_wg':
-                g, t = index
-                cut_expr += dual_value * (master.wg[g, t] - master_solution['wg'][(g, t)])
+            lhs_expr -= dual * master.ug[g, t]
+            ug_fixed = master_solution['ug'][g, t]
+            rhs_expr -= dual * ug_fixed
 
-        # Add the feasibility cut to the master problem
-        master.benders_cuts.add(cut_expr <= 0)
-        print('Feasibility cut added to the master problem.')
-
-    else:
-        print('Generating optimality cut.')
-
-        # Calculate the objective value of the subproblem
-        subproblem_obj = pyo.value(subproblem_model.obj)
-
-        # Start constructing the RHS of the Benders cut
-        rhs = subproblem_obj
-
-        # Loop over dual variables
-        for (constr_name, index), dual_value in dual_values.items():
-            if dual_value is None or abs(dual_value) < 1e-6:
+    # Generator Output Limits After Startup (gen_limit1)
+    for g in thermal_gens.keys():
+        gen = thermal_gens[g]
+        for t in time_periods.keys():
+            constraint_name = 'gen_limit1'
+            index = (g, t)
+            dual = dual_values.get((constraint_name, index), 0)
+            if abs(dual) < 1e-6:
                 continue
 
-            if constr_name == 'demand':
-                t = index
-                for g in thermal_gens.keys():
-                    gen = thermal_gens[g]
-                    coeff = gen['power_output_minimum']
-                    rhs += dual_value * coeff * (master.ug[g, t] - master_solution['ug'][(g, t)])
+            c1 = gen['power_output_maximum'] - gen['power_output_minimum']
+            c2 = max(0, gen['power_output_maximum'] - gen['ramp_startup_limit'])
 
-            elif constr_name == 'gen_limit1':
-                g, t = index
-                gen = thermal_gens[g]
-                max_output = gen['power_output_maximum'] - gen['power_output_minimum']
-                startup_limit = max(gen['power_output_maximum'] - gen['ramp_startup_limit'], 0)
-                coeff_ug = -max_output
-                coeff_vg = startup_limit
-                rhs += dual_value * (coeff_ug * (master.ug[g, t] - master_solution['ug'][(g, t)])
-                                     + coeff_vg * (master.vg[g, t] - master_solution['vg'][(g, t)]))
+            lhs_expr -= dual * (c1 * master.ug[g, t] - c2 * master.vg[g, t])
 
-            elif constr_name == 'gen_limit2':
-                g, t = index
-                gen = thermal_gens[g]
-                max_output = gen['power_output_maximum'] - gen['power_output_minimum']
-                shutdown_limit = max(gen['power_output_maximum'] - gen['ramp_shutdown_limit'], 0)
-                coeff_ug = -max_output
-                coeff_wg = shutdown_limit
-                if t + 1 in time_periods:
-                    rhs += dual_value * (coeff_ug * (master.ug[g, t] - master_solution['ug'][(g, t)])
-                                         + coeff_wg * (master.wg[g, t + 1] - master_solution['wg'][(g, t + 1)]))
+            ug_fixed = master_solution['ug'][g, t]
+            vg_fixed = master_solution['vg'][g, t]
 
-            elif constr_name == 'on_select':
-                g, t = index
-                rhs += dual_value * ( - (master.ug[g, t] - master_solution['ug'][(g, t)]))
+            rhs_expr -= dual * (c1 * ug_fixed - c2 * vg_fixed)
 
-            elif constr_name == 'ramp_up':
-                g, t = index
-                if t > 1:
-                    gen = thermal_gens[g]
-                    min_output = gen['power_output_minimum']
-                    rhs += dual_value * (-min_output * (master.ug[g, t - 1] - master_solution['ug'][(g, t - 1)]))
+    # Generator Output Limits Before Shutdown (gen_limit2)
+    for g in thermal_gens.keys():
+        gen = thermal_gens[g]
+        for t in time_periods.keys():
+            if t == max(time_periods.keys()):  # Skip the last time period
+                continue
+            constraint_name = 'gen_limit2'
+            index = (g, t)
+            dual = dual_values.get((constraint_name, index), 0)
+            if abs(dual) < 1e-6:
+                continue
 
-            elif constr_name == 'ramp_down':
-                g, t = index
-                if t > 1:
-                    gen = thermal_gens[g]
-                    min_output = gen['power_output_minimum']
-                    rhs += dual_value * (min_output * (master.ug[g, t - 1] - master_solution['ug'][(g, t - 1)]))
+            c1 = gen['power_output_maximum'] - gen['power_output_minimum']
+            c2 = max(0, gen['power_output_maximum'] - gen['ramp_shutdown_limit'])
 
-            elif constr_name == 'rampupt0':
-                g = index
-                gen = thermal_gens[g]
-                min_output = gen['power_output_minimum']
-                rhs += dual_value * min_output * (master.ug[g, 1] - master_solution['ug'][(g, 1)])
+            lhs_expr -= dual * (c1 * master.ug[g, t] - c2 * master.wg[g, t + 1])
+            ug_fixed = master_solution['ug'][g, t]
+            wg_fixed = master_solution['wg'][g, t + 1]
+            rhs_expr -= dual * (c1 * ug_fixed - c2 * wg_fixed)
 
-            elif constr_name == 'rampdownt0':
-                g = index
-                gen = thermal_gens[g]
-                min_output = gen['power_output_minimum']
-                rhs += dual_value * (-min_output * (master.ug[g, 1] - master_solution['ug'][(g, 1)]))
-
-            elif constr_name == 'power_select':
-                g, t = index
-                rhs += dual_value * ( - (master.ug[g, t] - master_solution['ug'][(g, t)]))
-
-            # Include other constraints if necessary
-
-        # Add the optimality cut to the master problem
-        master.benders_cuts.add(master.theta >= rhs)
-        print('Optimality cut added to the master problem.')
-
+    # Add the Benders optimality cut to the master problem
+    master.benders_cuts.add(lhs_expr >= rhs_expr)

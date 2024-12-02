@@ -1,6 +1,5 @@
 # Import necessary libraries
 import json
-import itertools
 from pyomo.environ import *
 from master_problem_pyomo import Master_problem_pyomo
 print("Finished importing")
@@ -20,8 +19,7 @@ time_periods = {t+1 : t for t in range(HOURS)}
 gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) in thermal_gens.items()}
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
 
-
-lower_bound, upper_bound, iterations = Master_problem_pyomo(data=data, thermal_gens=thermal_gens,renewable_gens = renewable_gens, time_periods=time_periods, gen_startup_categories=gen_startup_categories, gen_pwl_points=gen_pwl_points)
-print("The final objective value is: ", lower_bound)
-print("The upper bound is: ", upper_bound)
-print("The number of iterations where: ", iterations)
+lower_bound, upper_bound, iterations = Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_startup_categories, gen_pwl_points)
+print("\nFINAL SOLUTION:")
+print("The objective value is: ", upper_bound)
+print("The number of iterations where: ", iterations, "\n")
