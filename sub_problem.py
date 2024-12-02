@@ -22,7 +22,7 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     #Slack variables to make the problem feasable
     m.slack_demand = Var(time_periods.keys(), within=NonNegativeReals)
     m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
-    PENALTY = 1e6
+    PENALTY = 1e5
 
     #The variables from the master problem, an alternative way of using Variables that i fix is below
     '''
@@ -55,8 +55,6 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
             m.fixing_ug[g, t] = m.ug[g, t] == master_solution['ug'][g, t]
             m.fixing_vg[g, t] = m.vg[g, t] == master_solution['vg'][g, t]
             m.fixing_wg[g, t] = m.wg[g, t] == master_solution['wg'][g, t]
-
-
 
     m.demand = Constraint(time_periods.keys())
     m.reserves = Constraint(time_periods.keys())

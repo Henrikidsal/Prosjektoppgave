@@ -19,7 +19,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
     master.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary)
 
     #The theta variable that should be representing the sub problem cost
-    master.theta = Var(bounds=(-1e6, None), within=Reals)
+    master.theta = Var(bounds=(-1e1, None), within=Reals)
 
     #Master problem objective function
     master.obj = Objective(expr=sum(
@@ -74,7 +74,6 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
 
             if t > 1:
                 master.logical[g,t] = master.ug[g,t] - master.ug[g,t-1] == master.vg[g,t] - master.wg[g,t] #(12)
-
             UT = min(gen['time_up_minimum'], data['time_periods'])
             if t >= UT:
                 master.uptime[g,t] = sum(master.vg[g,t] for t in range(t-UT+1, t+1)) <= master.ug[g,t] #(13)
@@ -94,8 +93,8 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
     master.benders_cuts = ConstraintList()
 
     # Iterative Benders Decomposition
-    max_iterations = 200
-    tolerance = 1e4
+    max_iterations = 60
+    tolerance = 1e3
     iteration = 0
     convergence = False
     upper_bound = float('inf')
@@ -126,10 +125,11 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
 
         #Solves sub problem
         dual_values, sub_cost = subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods, gen_pwl_points)
-        #Set UB
+        #Setting UB
         master_cost = pyo.value(master.obj) - pyo.value(master.theta)
         upper_bound = min(upper_bound, master_cost + sub_cost)
         print(f'Upper bound: {upper_bound}')
+        print("theta: ", pyo.value(master.theta))
 
         #Finding gap, and setting loop conditions
         gap = upper_bound - lower_bound

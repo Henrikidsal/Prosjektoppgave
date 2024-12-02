@@ -9,7 +9,7 @@ data_file = "rts_gmlc/2020-01-27.json"
 print('loading data')
 data = json.load(open(data_file, 'r'))
 
-HOURS = 2 #The number of time periods you want
+HOURS = 48 #The number of time periods you want
 data['time_periods'] = HOURS
 
 # Extract data for generators and time periods
