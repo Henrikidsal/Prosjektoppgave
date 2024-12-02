@@ -20,6 +20,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
 
     #The theta variable that should be representing the sub problem cost
     master.theta = Var(bounds=(-10, None), within=Reals)
+    print(type(master.theta))
 
     #Master problem objective function
     master.obj = Objective(expr=sum(
@@ -101,7 +102,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
     master.benders_cuts = ConstraintList()
 
     # Iterative Benders Decomposition
-    max_iterations = 60
+    max_iterations = 6000
     tolerance = 100
     iteration = 0
     convergence = False
@@ -138,6 +139,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
         upper_bound = min(upper_bound, master_cost + sub_cost)
         print(f'Upper bound: {upper_bound}')
         print("theta: ", pyo.value(master.theta))
+
 
         #Finding gap, and setting loop conditions
         gap = upper_bound - lower_bound
