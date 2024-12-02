@@ -16,6 +16,6 @@ def generate_benders_cut(master, dual_values, sub_cost, master_solution):
         elif constr_name == "fixing_wg":
             LHS -= dual_value * master.wg[g, t]
             RHS -= dual_value * master_solution["wg"][g, t]
-
+            
     # Add the Benders cut to the master problem
     master.benders_cuts.add(LHS >= RHS)
