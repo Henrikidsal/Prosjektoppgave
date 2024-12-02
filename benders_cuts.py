@@ -1,75 +1,67 @@
 from pyomo.environ import *
 
+def generate_benders_cut(master, dual_values, sub_cost, master_solution):
+    
+    # Initialize LHS and RHS
+    LHS = master.theta
+    RHS = sub_cost
+
+    # Add terms from duals for ug, vg, wg
+    for (constr_name, (g, t)), dual_value in dual_values.items():
+        if constr_name == "fixing_ug":
+            LHS -= dual_value * master.ug[g, t]
+            RHS -= dual_value * master_solution["ug"][g, t]
+        elif constr_name == "fixing_vg":
+            LHS -= dual_value * master.vg[g, t]
+            RHS -= dual_value * master_solution["vg"][g, t]
+        elif constr_name == "fixing_wg":
+            LHS -= dual_value * master.wg[g, t]
+            RHS -= dual_value * master_solution["wg"][g, t]
+
+    # Add the Benders cut to the master problem
+    master.benders_cuts.add(LHS >= RHS)
+
+
+'''
 def generate_benders_cut(master, thermal_gens, time_periods, dual_values, sub_cost, master_solution):
 
 
     lhs_expr = master.theta
     rhs_expr = sub_cost
 
-    # Demand constraints
-    for t in time_periods.keys():
-        constraint_name = 'demand'
-        index = t
-        dual = dual_values.get((constraint_name, index), 0)
-        if abs(dual) < 1e-6:
-            continue
-
-        for g, gen in thermal_gens.items():
-            lhs_expr -= dual * gen['power_output_minimum'] * master.ug[g, t]
-            rhs_expr -= dual * gen['power_output_minimum'] * master_solution['ug'][g, t]
-
-    # On-Select constraints
     for g in thermal_gens.keys():
         for t in time_periods.keys():
-            constraint_name = 'on_select'
+            constraint_name = 'fixing_ug'
             index = (g, t)
             dual = dual_values.get((constraint_name, index), 0)
             if abs(dual) < 1e-6:
                 continue
 
             lhs_expr -= dual * master.ug[g, t]
-            ug_fixed = master_solution['ug'][g, t]
-            rhs_expr -= dual * ug_fixed
+            rhs_expr -= dual * master_solution['ug'][g, t]
 
-    # Generator Output Limits After Startup (gen_limit1)
     for g in thermal_gens.keys():
-        gen = thermal_gens[g]
         for t in time_periods.keys():
-            constraint_name = 'gen_limit1'
+            constraint_name = 'fixing_vg'
             index = (g, t)
             dual = dual_values.get((constraint_name, index), 0)
             if abs(dual) < 1e-6:
                 continue
 
-            c1 = gen['power_output_maximum'] - gen['power_output_minimum']
-            c2 = max(0, gen['power_output_maximum'] - gen['ramp_startup_limit'])
+            lhs_expr -= dual * master.vg[g, t]
+            rhs_expr -= dual *  master_solution['vg'][g, t]
 
-            lhs_expr -= dual * (c1 * master.ug[g, t] - c2 * master.vg[g, t])
-
-            ug_fixed = master_solution['ug'][g, t]
-            vg_fixed = master_solution['vg'][g, t]
-
-            rhs_expr -= dual * (c1 * ug_fixed - c2 * vg_fixed)
-
-    # Generator Output Limits Before Shutdown (gen_limit2)
     for g in thermal_gens.keys():
-        gen = thermal_gens[g]
         for t in time_periods.keys():
-            if t == max(time_periods.keys()):  # Skip the last time period
-                continue
-            constraint_name = 'gen_limit2'
+            constraint_name = 'fixing_wg'
             index = (g, t)
             dual = dual_values.get((constraint_name, index), 0)
             if abs(dual) < 1e-6:
                 continue
 
-            c1 = gen['power_output_maximum'] - gen['power_output_minimum']
-            c2 = max(0, gen['power_output_maximum'] - gen['ramp_shutdown_limit'])
-
-            lhs_expr -= dual * (c1 * master.ug[g, t] - c2 * master.wg[g, t + 1])
-            ug_fixed = master_solution['ug'][g, t]
-            wg_fixed = master_solution['wg'][g, t + 1]
-            rhs_expr -= dual * (c1 * ug_fixed - c2 * wg_fixed)
+            lhs_expr -= dual * master.wg[g, t]
+            rhs_expr -= dual * master_solution['wg'][g, t]
 
     # Add the Benders optimality cut to the master problem
     master.benders_cuts.add(lhs_expr >= rhs_expr)
+    '''
