@@ -26,7 +26,6 @@ def generate_benders_cut(master, dual_values, sub_cost, master_solution):
         else:
             print("This should never print")
         
-    print(RHS)
     # Add the Benders cut to the master problem
     master.benders_cuts.add(LHS >= RHS)
 

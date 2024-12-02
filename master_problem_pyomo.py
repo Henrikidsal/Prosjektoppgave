@@ -133,7 +133,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
         print(f'Lower bound: {lower_bound}')
 
         #Solves sub problem
-        dual_values, sub_cost = subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods, gen_pwl_points)
+        dual_values, sub_cost = subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods, gen_pwl_points, iteration)
         #Setting UB
         master_cost = pyo.value(master.obj) - pyo.value(master.theta)
         upper_bound = min(upper_bound, master_cost + sub_cost)
@@ -148,7 +148,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
             convergence = True
             print('Convergence achieved!')
             break
-        
+
         #Generate new benders cuts
         generate_benders_cut(master, dual_values, sub_cost, master_solution)
 
