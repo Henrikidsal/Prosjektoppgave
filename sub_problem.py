@@ -22,7 +22,7 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     #Slack variables to make the problem feasable
     m.slack_demand = Var(time_periods.keys(), within=NonNegativeReals)
     m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
-    PENALTY = 1e7
+    PENALTY = 1e8
 
     #The variables from the master problem, an alternative way of using Variables that i fix is below
     m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
@@ -109,7 +109,12 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
                 dual_values[(constr_name, index)] = dual
     except KeyError as e:
         print(f"Error accessing duals: {e}")
-    #print("du: ", dual_values)
+    
+    #print("duals: ", dual_values)
+    count_duals_gt_zero = sum(1 for dual in dual_values.values() if dual > 0)
+    count_duals_lt_zero = sum(1 for dual in dual_values.values() if dual < 0)
+    #print("Number of dual variables greater than zero:", count_duals_gt_zero)
+    #print("Number of dual variables less than zero:", count_duals_lt_zero)
 
     #dual values goes to cuts, sub_cost goes to master for creating UB
     return dual_values, sub_cost

@@ -5,6 +5,7 @@ def generate_benders_cut(master, dual_values, sub_cost, master_solution):
     LHS = master.theta
     RHS = sub_cost
 
+
     # Add terms from duals for ug, vg, wg
     for (constr_name, (g, t)), dual_value in dual_values.items():
         if constr_name == "fixing_ug":
@@ -22,6 +23,9 @@ def generate_benders_cut(master, dual_values, sub_cost, master_solution):
                 continue
             LHS -= dual_value * master.wg[g, t]
             RHS -= dual_value * master_solution["wg"][g, t]
+        else:
+            print("This should never print")
+        
 
     # Add the Benders cut to the master problem
     master.benders_cuts.add(LHS >= RHS)
