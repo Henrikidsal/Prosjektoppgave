@@ -3,7 +3,7 @@ import json
 from pyomo.environ import *
 from master_problem_pyomo import Master_problem_pyomo
 print("Finished importing")
-
+print("yyyy")
 # Load data
 data_file = "rts_gmlc/2020-01-27.json"
 print('loading data')
