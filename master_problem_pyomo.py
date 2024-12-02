@@ -94,7 +94,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
     master.benders_cuts = ConstraintList()
 
     # Iterative Benders Decomposition
-    max_iterations = 20
+    max_iterations = 200
     tolerance = 1e4
     iteration = 0
     convergence = False
