@@ -22,10 +22,10 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     #Slack variables to make the problem feasable
     m.slack_demand = Var(time_periods.keys(), within=NonNegativeReals)
     m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
-    PENALTY = 1e8
+    PENALTY = 1e5
 
     for x in range(iteration+1):
-        PENALTY=PENALTY*0.92
+        PENALTY=PENALTY*0.95
 
     #The variables from the master problem, an alternative way of using Variables that i fix is below
     m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
