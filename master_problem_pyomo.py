@@ -19,7 +19,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
     master.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary)
 
     #The theta variable that should be representing the sub problem cost
-    master.theta = Var(within=NonNegativeReals)
+    master.theta = Var(bounds=(-1e6, None), within=Reals)
 
     #Master problem objective function
     master.obj = Objective(expr=sum(
@@ -140,7 +140,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
             break
         
         #Generate new benders cuts
-        generate_benders_cut(master, thermal_gens, time_periods, dual_values, sub_cost, master_solution)
+        generate_benders_cut(master, dual_values, sub_cost, master_solution)
 
     if convergence:
         print('Benders decomposition converged.')
