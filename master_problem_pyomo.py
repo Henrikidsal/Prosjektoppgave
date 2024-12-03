@@ -144,7 +144,7 @@ def solving_master_problem(master, thermal_gens, time_periods, gen_startup_categ
     
     #solve the problem
     solver = SolverFactory('gurobi')
-    solver.solve(master, options={'MIPGap': 0.1}, tee=False)
+    solver.solve(master, options={'MIPGap': 0}, tee=False)
 
     #master.new3[2].pprint()
 
