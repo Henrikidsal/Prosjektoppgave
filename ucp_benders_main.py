@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 parser = argparse.ArgumentParser(description="Run a script with command-line parameters.")
 
 # Add arguments
-parser.add_argument("-PENALTY", type=int, help="Set the penalty value", required=True)
-parser.add_argument("-BETA_L", type=int, help="Set the beta value", required=True)
+parser.add_argument("-PENALTY", type=float, help="Set the penalty value", required=True)
+parser.add_argument("-BETA_L", type=float, help="Set the beta value", required=True)
 
 # Parse arguments
 args = parser.parse_args()
@@ -23,6 +23,8 @@ args = parser.parse_args()
 PENALTY = args.PENALTY
 BETA_L = args.BETA_L
 
+PENALTY = int(args.PENALTY)
+BETA_L = int(args.BETA_L)
 
 print("Finished importing")
 # Load data
