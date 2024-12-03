@@ -122,6 +122,7 @@ print("The number of iterations where: ", iteration, "\n")
 
 plt.plot(plotting_values["lower_bound"], label="lower bound")
 plt.plot(plotting_values["upper_bound"], label="upper bound")
+plt.yscale("log")
 plt.legend()
 plt.title(f"Convergence plot. PENALTY:{PENALTY}, BETA_L:{BETA_L}")
 plt.savefig(f"plots/plots_penalty_{PENALTY}_beta_l_{BETA_L}.png")
