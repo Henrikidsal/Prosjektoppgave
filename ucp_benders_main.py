@@ -44,7 +44,7 @@ gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) i
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
 
 # Iterative Benders Decomposition
-max_iterations = 10
+max_iterations = 5000
 tolerance = 10
 iteration = 0
 convergence = False
