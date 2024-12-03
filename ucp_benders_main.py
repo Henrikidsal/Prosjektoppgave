@@ -7,6 +7,7 @@ from benders_cuts import generate_benders_cut
 from sub_problem import subproblem
 import argparse
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 # Create the parser
@@ -127,3 +128,14 @@ plt.legend()
 plt.title(f"Convergence plot. PENALTY:{PENALTY}, BETA_L:{BETA_L}")
 plt.savefig(f"plots/plots_penalty_{PENALTY}_beta_l_{BETA_L}.png")
 plt.show()
+
+
+# Save values to CSV
+csv_filename = f"csv_files/penalty_{PENALTY}_beta_l_{BETA_L}.csv"
+df = pd.DataFrame({
+    "lower_bound": plotting_values["lower_bound"],
+    "upper_bound": plotting_values["upper_bound"]
+})
+df.to_csv(csv_filename, index=False)
+
+print(f"CSV file saved to {csv_filename}")
