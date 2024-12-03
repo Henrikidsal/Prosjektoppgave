@@ -23,8 +23,14 @@ args = parser.parse_args()
 PENALTY = args.PENALTY
 BETA_L = args.BETA_L
 
+
+
 PENALTY = int(args.PENALTY)
 BETA_L = int(args.BETA_L)
+
+# Print the values to confirm
+print(f"PENALTY: {PENALTY}")
+print(f"BETA_L: {BETA_L}")
 
 print("Finished importing")
 # Load data
