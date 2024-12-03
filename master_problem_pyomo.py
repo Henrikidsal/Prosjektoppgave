@@ -5,7 +5,7 @@ import pyomo.environ as pyo
 
 
 # Initialize Benders Decomposition
-def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen_startup_categories, iteration):
+def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen_startup_categories, iteration, BETA_L=-10):
 
     master = ConcreteModel()
 
@@ -15,7 +15,7 @@ def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen
     master.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary)
 
     #The beta variable that should be representing the sub problem cost
-    master.beta = Var(bounds=(-10, None), within=Reals)
+    master.beta = Var(bounds=(BETA_L, None), within=Reals)
 
     #Master problem objective function
     master.obj = Objective(expr=sum(

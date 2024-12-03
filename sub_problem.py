@@ -5,7 +5,7 @@ import pyomo.environ as pyo
 from pyomo.environ import Suffix
 
 # Subproblem
-def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_periods, gen_pwl_points):
+def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_periods, gen_pwl_points, PENALTY=1e5,):
 
     m = ConcreteModel()
 
@@ -22,7 +22,7 @@ def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_perio
     #Slack variables to make the problem feasable
     m.slack_demand = Var(time_periods.keys(), within=NonNegativeReals)
     m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
-    PENALTY = 1e7
+    #PENALTY = 1e5
 
     #The variables from the master problem
     m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)

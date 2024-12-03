@@ -5,9 +5,24 @@ from master_problem_pyomo import initial_master_problem
 from master_problem_pyomo import solving_master_problem
 from benders_cuts import generate_benders_cut
 from sub_problem import subproblem
-import pyomo.environ as pyo
-from collections import defaultdict
-import random
+import argparse
+import matplotlib.pyplot as plt
+
+
+# Create the parser
+parser = argparse.ArgumentParser(description="Run a script with command-line parameters.")
+
+# Add arguments
+parser.add_argument("-PENALTY", type=int, help="Set the penalty value", required=True)
+parser.add_argument("-BETA_L", type=int, help="Set the beta value", required=True)
+
+# Parse arguments
+args = parser.parse_args()
+
+# Access the arguments
+PENALTY = args.PENALTY
+BETA_L = args.BETA_L
+
 
 print("Finished importing")
 # Load data
@@ -26,14 +41,23 @@ gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) i
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
 
 # Iterative Benders Decomposition
-max_iterations = 5000
+max_iterations = 2
 tolerance = 10
 iteration = 0
 convergence = False
 upper_bound = float('inf')
 lower_bound = -float('inf')
 
-master = initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen_startup_categories, iteration)
+
+
+plotting_values={
+    "upper_bound":[],
+    "lower_bound":[],
+}
+
+
+
+master = initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen_startup_categories, iteration, BETA_L=BETA_L)
 
 #Starting algorithm
 print('Solving master problem')
@@ -63,7 +87,7 @@ while not convergence and iteration < max_iterations:
     print(f'Lower bound: {lower_bound}')
 
     #Solving the sub problem
-    dual_values, theta_j = subproblem(data, master_var_values, thermal_gens, renewable_gens, time_periods, gen_pwl_points)
+    dual_values, theta_j = subproblem(data, master_var_values, thermal_gens, renewable_gens, time_periods, gen_pwl_points, PENALTY=PENALTY)
     
     #Setting UB
     master_cost = master_obj_value - beta
@@ -86,6 +110,17 @@ while not convergence and iteration < max_iterations:
     #Generates new benders cuts
     generate_benders_cut(master, dual_values, theta_j, master_var_values)
 
+    plotting_values["lower_bound"].append(lower_bound)
+    plotting_values["upper_bound"].append(upper_bound)
+
+
 print("\nFINAL SOLUTION:")
 print("The objective value is: ", upper_bound)
 print("The number of iterations where: ", iteration, "\n")
+
+plt.plot(plotting_values["lower_bound"], label="lower bound")
+plt.plot(plotting_values["upper_bound"], label="upper bound")
+plt.legend()
+plt.title(f"Convergence plot. PENALTY:{PENALTY}, BETA_L:{BETA_L}")
+plt.savefig(f"plots/plots_penalty_{PENALTY}_beta_l_{BETA_L}.png")
+plt.show()
