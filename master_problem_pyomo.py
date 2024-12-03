@@ -17,7 +17,7 @@ def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen
     master.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary)
 
     #The beta variable that should be representing the sub problem cost
-    master.beta = Var(bounds=(-1e4, None), within=Reals)
+    master.beta = Var(bounds=(-100, None), within=Reals)
 
     #Master problem objective function
     master.obj = Objective(expr=sum(
@@ -101,10 +101,45 @@ def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen
                 if t >= gen['startup'][s+1]['lag']:
                     master.startup_allowed[g,s,t] = master.dg[g,s,t] <= sum(master.wg[g,t-i] for i in range(gen['startup'][s]['lag'], gen['startup'][s+1]['lag'])) #(15)
 
+
     master.new = Constraint(time_periods.keys())
     for t,t_idx in time_periods.items():
-        master.new[t] = sum( master.ug[g,t]*thermal_gens[g]['power_output_maximum'] for g in thermal_gens) + sum(renewable_gens[g]['power_output_maximum'][t_idx] for g in renewable_gens) >= 1.1*(data['demand'][t_idx] + data['reserves'][t_idx]) #(NEW)
+        master.new[t] = sum( master.ug[g,t]*thermal_gens[g]['power_output_maximum'] for g in thermal_gens) + sum(renewable_gens[g]['power_output_maximum'][t_idx] for g in renewable_gens) >= 1*(data['demand'][t_idx] + data['reserves'][t_idx]) #(NEW)
 
+
+    '''
+    # New variableØ
+    master.z = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
+    #New thought constraint
+    master.new1 = Constraint(thermal_gens.keys(), time_periods.keys())
+    master.new2 = Constraint(thermal_gens.keys(), time_periods.keys())
+    master.new3 = Constraint(time_periods.keys())
+    master.new4 = Constraint(time_periods.keys())
+
+
+    for g, gen in thermal_gens.items():
+        for t in time_periods:
+            if t > 1 and t < len(time_periods):
+                master.new1[g,t] = master.z[g,t] <= (master.ug[g,t-1]+master.ug[g,t]+master.ug[g,t+1])/3
+            elif t ==1: 
+                master.new1[g,t] = master.z[g,t] <= (gen['unit_on_t0'] + master.ug[g,t]+master.ug[g,t+1])/3
+
+    for g, gen in thermal_gens.items():
+        for t in time_periods:
+            if t > 1 and t < len(time_periods):
+                master.new2[g,t] = master.z[g,t] >= (master.ug[g,t-1] + master.ug[g,t] + master.ug[g,t+1] -2)/3
+            elif t ==1: 
+                master.new2[g,t] = master.z[g,t] >= (gen['unit_on_t0'] + master.ug[g,t]+master.ug[g,t+1] -2)/3
+
+    
+    for t in time_periods:
+        if t > 1 and t<len(time_periods):
+            master.new3[t] = (data['demand'][t] + data['reserves'][t]) - ((data['demand'][t-1] - data['reserves'][t-1]))  <= sum(((thermal_gens[g]['ramp_up_limit'] + thermal_gens[g]['power_output_minimum'] - thermal_gens[g]['ramp_startup_limit'] ) * master.z[g, t] + thermal_gens[g]['ramp_startup_limit'] * master.ug[g, t] - thermal_gens[g]['power_output_minimum'] * master.ug[g, t-1]) for g in thermal_gens) + sum(renewable_gens[g]['power_output_maximum'][t] - renewable_gens[g]['power_output_maximum'][t-1] for g in renewable_gens)
+
+    for t in time_periods:
+        if t > 1 and t<len(time_periods):
+            master.new4[t] = (data['demand'][t-1] + data['reserves'][t-1]) - ((data['demand'][t] + data['reserves'][t]))  <= sum(((thermal_gens[g]['ramp_down_limit'] + thermal_gens[g]['power_output_minimum'] - thermal_gens[g]['ramp_shutdown_limit'] ) * master.z[g, t] + thermal_gens[g]['ramp_shutdown_limit'] * master.ug[g, t] - thermal_gens[g]['power_output_minimum'] * master.ug[g, t-1]) for g in thermal_gens) + sum(renewable_gens[g]['power_output_maximum'][t] - renewable_gens[g]['power_output_maximum'][t-1] for g in renewable_gens)
+    '''
 
     #This is the way i add benders cuts, think it should be fine
     master.benders_cuts = ConstraintList()
@@ -116,7 +151,9 @@ def solving_master_problem(master, thermal_gens, renewable_gens, time_periods, g
     
     #solve the problem
     solver = SolverFactory('gurobi')
-    solver.solve(master, options={'MIPGap': 0.001}, tee=False)
+    solver.solve(master, options={'MIPGap': 0.0}, tee=False)
+
+    #master.new3[2].pprint()
 
     master_var_values = {
             'ug': {(g, t): value(master.ug[g, t]) for g in thermal_gens.keys() for t in time_periods.keys()},

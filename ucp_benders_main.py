@@ -120,6 +120,7 @@ while not convergence and iteration < max_iterations:
 
     #Generates new benders cuts
     generate_benders_cut(master, dual_values, theta_j, master_var_values)
+    #master.benders_cuts.pprint()
 
 
 print("\nFINAL SOLUTION:")

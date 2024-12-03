@@ -19,6 +19,8 @@ def generate_benders_cut(master, dual_values, theta_j, master_var_values):
 
     # Add the Benders cut to the master problem
     master.benders_cuts.add(LHS >= RHS)
+    
+    print('here')
 
 
 
