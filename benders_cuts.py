@@ -1,21 +1,21 @@
 from pyomo.environ import *
 
-def generate_benders_cut(master, dual_values, sub_cost, master_var_values):
+def generate_benders_cut(master, dual_values, sub_cost, master_solution):
 
     LHS = master.beta
     RHS = sub_cost
 
+    
     for constraint, dual_dict in dual_values.items(): 
         for (g, t), dual_value in dual_dict.items():
             if abs(dual_value) < 1e-6:
                 continue
             if constraint == "fixing_ug":
-                RHS += dual_value * (master.ug[g, t] - master_var_values["ug"][g, t])
+                RHS += dual_value * (master.ug[g, t] - master_solution["ug"][g, t])
             elif constraint == "fixing_vg":
-                RHS += dual_value * (master.vg[g, t] - master_var_values["vg"][g, t])
+                RHS += dual_value * (master.vg[g, t] - master_solution["vg"][g, t])
             elif constraint == "fixing_wg":
-                RHS += dual_value * (master.wg[g, t] - master_var_values["wg"][g, t])
-                print(dual_value)
+                RHS += dual_value * (master.wg[g, t] - master_solution["wg"][g, t])
 
     # Add the Benders cut to the master problem
     master.benders_cuts.add(LHS >= RHS)
@@ -27,17 +27,17 @@ for (constraint, (g, t)), dual_value in dual_values.items():
     if constraint == "fixing_ug":
         if abs(dual_value) < 1e-6:
             continue
-        RHS += dual_value * (master.ug[g, t] - master_var_values["ug"][g, t])
+        RHS += dual_value * (master.ug[g, t] - master_solution["ug"][g, t])
         #print(dual_value)
     elif constraint == "fixing_vg":
         if abs(dual_value) < 1e-6:
             continue
-        RHS += dual_value * (master.vg[g, t] - master_var_values["vg"][g, t])
+        RHS += dual_value * (master.vg[g, t] - master_solution["vg"][g, t])
         #print(dual_value)
     elif constraint == "fixing_wg":
         if abs(dual_value) < 1e-6:
             continue
-        RHS += dual_value * (master.wg[g, t] - master_var_values["wg"][g, t])
+        RHS += dual_value * (master.wg[g, t] - master_solution["wg"][g, t])
         print(dual_value)
 '''
 

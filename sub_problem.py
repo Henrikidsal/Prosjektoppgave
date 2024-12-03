@@ -5,7 +5,7 @@ import pyomo.environ as pyo
 from pyomo.environ import Suffix
 
 # Subproblem
-def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_periods, gen_pwl_points):
+def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods, gen_pwl_points, iteration):
 
     m = ConcreteModel()
 
@@ -47,9 +47,9 @@ def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_perio
 
     for g in thermal_gens.keys():
         for t in time_periods.keys():
-            m.fixing_ug[g, t] = m.ug[g, t] == master_var_values['ug'][g, t]
-            m.fixing_vg[g, t] = m.vg[g, t] == master_var_values['vg'][g, t]
-            m.fixing_wg[g, t] = m.wg[g, t] == master_var_values['wg'][g, t]
+            m.fixing_ug[g, t] = m.ug[g, t] == master_solution['ug'][g, t]
+            m.fixing_vg[g, t] = m.vg[g, t] == master_solution['vg'][g, t]
+            m.fixing_wg[g, t] = m.wg[g, t] == master_solution['wg'][g, t]
 
     m.demand = Constraint(time_periods.keys())
     m.reserves = Constraint(time_periods.keys())
@@ -113,11 +113,16 @@ def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_perio
     # Loop over thermal generators and time periods to populate the duals
     for g in thermal_gens.keys():
         for t in time_periods.keys():
+            # Save the dual value for fixing_ug
             dual_values["fixing_ug"][(g, t)] = m.dual[m.fixing_ug[g, t]]
+            
+            # Save the dual value for fixing_vg
             dual_values["fixing_vg"][(g, t)] = m.dual[m.fixing_vg[g, t]]
+            
+            # Save the dual value for fixing_wg
             dual_values["fixing_wg"][(g, t)] = m.dual[m.fixing_wg[g, t]]
 
-    #dual values goes to cuts, sub_cost goes to the loop for creating UB
+    #dual values goes to cuts, sub_cost goes to master for creating UB
     return dual_values, sub_cost
 
 
