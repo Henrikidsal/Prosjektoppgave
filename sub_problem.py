@@ -21,26 +21,18 @@ def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_perio
     
     #Slack variables to make the problem feasable
     m.slack_demand = Var(time_periods.keys(), within=NonNegativeReals)
-    #m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
-    PENALTY = 400
+    m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
+    PENALTY = 10000
 
-    #The variables from the master problem, an alternative way of using Variables that i fix is below
+    #The variables from the master problem
     m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
     m.vg = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
     m.wg = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
 
-    '''
-    # Fix variables to master solution values
-    for g in thermal_gens.keys():
-        for t in time_periods.keys():
-            m.ug[g, t].fix(master_solution['ug'][g, t])
-            m.vg[g, t].fix(master_solution['vg'][g, t])
-            m.wg[g, t].fix(master_solution['wg'][g, t])
-    '''
     # Objective Function 
-    m.obj = Objective(expr= sum(sum(m.cg[g, t] for t in time_periods) for g in thermal_gens) + PENALTY * (sum(m.slack_demand[t] for t in time_periods) ))
+    m.obj = Objective(expr= sum(sum(m.cg[g, t] for t in time_periods) for g in thermal_gens) + PENALTY * (sum(m.slack_demand[t] + m.slack_reserve[t] for t in time_periods)))
 
-    # Constraints (Pretty sure these are correct, since they are the same as in a different formulation without benders)
+    # Constraints
     m.fixing_ug = Constraint(thermal_gens.keys(), time_periods.keys())
     m.fixing_vg = Constraint(thermal_gens.keys(), time_periods.keys())
     m.fixing_wg = Constraint(thermal_gens.keys(), time_periods.keys())
@@ -55,7 +47,7 @@ def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_perio
     m.reserves = Constraint(time_periods.keys())
     for t,t_idx in time_periods.items():
         m.demand[t] = sum( m.pg[g,t]+gen['power_output_minimum']*m.ug[g,t] for (g, gen) in thermal_gens.items() ) + sum(m.pw[w,t] for w in renewable_gens) + m.slack_demand[t] == data['demand'][t_idx] #(2)
-        m.reserves[t] = sum( m.rg[g,t] for g in thermal_gens ) >= data['reserves'][t_idx] #(3)
+        m.reserves[t] = sum( m.rg[g,t] for g in thermal_gens ) + m.slack_reserve[t]>= data['reserves'][t_idx] #(3)
 
     m.rampupt0 = Constraint(thermal_gens.keys())
     m.rampdownt0 = Constraint(thermal_gens.keys())
@@ -92,17 +84,17 @@ def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_perio
 
     #solves sub problem
     solver = SolverFactory('gurobi')
-    #solver.options['OutputFlag'] = 0
-    #solver.options['DualReductions'] = 0
     solver.solve(m, tee=False)
+
     theta_j = pyo.value(m.obj)
 
-    total_slack = sum(pyo.value(m.slack_demand[t]) for t in time_periods)
+    total_slack = sum(pyo.value(m.slack_demand[t]) + pyo.value(m.slack_reserve[t]) for t in time_periods)
     if total_slack > 1e-6:  # Use a small threshold to account for numerical precision
-        print("infeasable")
+        print("Infeasible")
     else:
-        print("FEASABLE")
+        print("Feasible")
 
+    print(f"total slack = {total_slack}")
     
     dual_values = {
         "fixing_ug": {},
@@ -121,32 +113,7 @@ def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_perio
             
             # Save the dual value for fixing_wg
             dual_values["fixing_wg"][(g, t)] = m.dual[m.fixing_wg[g, t]]
-    
-    # Print the values of the slack variables
-    print("\nSlack Variable Values:") 
-    sum_slack_demand = 0
-    for t in time_periods.keys():
-        slack_demand_value = pyo.value(m.slack_demand[t])
-        sum_slack_demand += slack_demand_value
-        #slack_reserve_value = pyo.value(m.slack_reserve[t])
-        #print(f"Time Period {t}: Slack Demand = {slack_demand_value}")
-    print(f"total slack = to {sum_slack_demand}")
+
 
     #dual values goes to cuts, theta_j goes to master for creating UB
     return dual_values, theta_j
-
-
-'''
-#This is collecting the dual values in a dictionary
-dual_values = {}
-relevant_constraints = [m.fixing_ug, m.fixing_vg, m.fixing_wg]
-try:
-    for constraint in relevant_constraints:
-        constr_name = constraint.local_name
-        for index in constraint:
-            con = constraint[index]
-            dual = m.dual.get(con, 0)
-            dual_values[(constr_name, index)] = dual
-except KeyError as e:
-    print(f"Error accessing duals: {e}")
-'''

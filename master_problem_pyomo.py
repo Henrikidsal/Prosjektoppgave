@@ -17,7 +17,7 @@ def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen
     master.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary)
 
     #The beta variable that should be representing the sub problem cost
-    master.beta = Var(bounds=(-100, None), within=Reals)
+    master.beta = Var(bounds=(-10e6, None), within=Reals)
 
     #Master problem objective function
     master.obj = Objective(expr=sum(
@@ -104,12 +104,13 @@ def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen
 
     master.new = Constraint(time_periods.keys())
     for t,t_idx in time_periods.items():
-        master.new[t] = sum( master.ug[g,t]*thermal_gens[g]['power_output_maximum'] for g in thermal_gens) + sum(renewable_gens[g]['power_output_maximum'][t_idx] for g in renewable_gens) >= 1*(data['demand'][t_idx] + data['reserves'][t_idx]) #(NEW)
+        master.new[t] = sum( master.ug[g,t]*thermal_gens[g]['power_output_maximum'] for g in thermal_gens) + sum(renewable_gens[g]['power_output_maximum'][t_idx] for g in renewable_gens) >= (data['demand'][t_idx] + data['reserves'][t_idx])
 
 
     '''
-    # New variableØ
+    # New variable
     master.z = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
+
     #New thought constraint
     master.new1 = Constraint(thermal_gens.keys(), time_periods.keys())
     master.new2 = Constraint(thermal_gens.keys(), time_periods.keys())
@@ -147,11 +148,11 @@ def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen
     return master
 
 
-def solving_master_problem(master, thermal_gens, renewable_gens, time_periods, gen_startup_categories, iteration):
+def solving_master_problem(master, thermal_gens, time_periods, gen_startup_categories):
     
     #solve the problem
     solver = SolverFactory('gurobi')
-    solver.solve(master, options={'MIPGap': 0.0}, tee=False)
+    solver.solve(master, options={'MIPGap': 0.0}, tee=True)
 
     #master.new3[2].pprint()
 

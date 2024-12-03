@@ -19,27 +19,4 @@ def generate_benders_cut(master, dual_values, theta_j, master_var_values):
 
     # Add the Benders cut to the master problem
     master.benders_cuts.add(LHS >= RHS)
-    
-    print('here')
-
-
-
-'''
-for (constraint, (g, t)), dual_value in dual_values.items():
-    if constraint == "fixing_ug":
-        if abs(dual_value) < 1e-6:
-            continue
-        RHS += dual_value * (master.ug[g, t] - master_solution["ug"][g, t])
-        #print(dual_value)
-    elif constraint == "fixing_vg":
-        if abs(dual_value) < 1e-6:
-            continue
-        RHS += dual_value * (master.vg[g, t] - master_solution["vg"][g, t])
-        #print(dual_value)
-    elif constraint == "fixing_wg":
-        if abs(dual_value) < 1e-6:
-            continue
-        RHS += dual_value * (master.wg[g, t] - master_solution["wg"][g, t])
-        print(dual_value)
-'''
 
