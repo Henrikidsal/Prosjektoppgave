@@ -15,7 +15,7 @@ data_file = "rts_gmlc/2020-01-27.json"
 print('loading data')
 data = json.load(open(data_file, 'r'))
 
-HOURS = 24 #The number of time periods you want
+HOURS = 48 #The number of time periods you want
 data['time_periods'] = HOURS
 
 # Extract data for generators and time periods
@@ -26,9 +26,9 @@ gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) i
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
 
 # Iterative Benders Decomposition
-max_iterations = 6000
-tolerance = 100
-iteration = 1
+max_iterations = 5000
+tolerance = 10
+iteration = 0
 convergence = False
 upper_bound = float('inf')
 lower_bound = -float('inf')
@@ -38,8 +38,11 @@ master = initial_master_problem(data, thermal_gens, renewable_gens, time_periods
 #Starting algorithm
 print('Solving master problem')
 while not convergence and iteration < max_iterations:
+    
+    #New iteration
+    iteration += 1
+    print(f'\nIteration {iteration}')
 
-    print("rr")
     #solving master problem
     master_obj_value, master_var_values, beta = solving_master_problem(master, thermal_gens, time_periods, gen_startup_categories)
 
@@ -55,13 +58,6 @@ while not convergence and iteration < max_iterations:
         print(f"Constraint: {name}, Number of constraints: {count}")
     '''
 
-    #New iteration
-    print(f'\nIteration {iteration}')
-    iteration += 1
-
-    if iteration == 2:
-        master = initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen_startup_categories, iteration)
-    
     #setting LB
     lower_bound = master_obj_value
     print(f'Lower bound: {lower_bound}')

@@ -9,15 +9,13 @@ def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen
 
     master = ConcreteModel()
 
-    print('Building master problem')
-
     master.ug = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
     master.vg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
     master.wg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
     master.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary)
 
     #The beta variable that should be representing the sub problem cost
-    master.beta = Var(bounds=(-10e6, None), within=Reals)
+    master.beta = Var(bounds=(-10, None), within=Reals)
 
     #Master problem objective function
     master.obj = Objective(expr=sum(
@@ -38,13 +36,7 @@ def initial_master_problem(data, thermal_gens, renewable_gens, time_periods, gen
 
     for g, gen in thermal_gens.items():
         if gen['unit_on_t0'] == 1:
-            if iteration == -1:
-                #print('first iteration-',g)
-                for t in time_periods:
-                #    master.ug[g,t] = 1  
-                    master.uptimet0[g] = (master.ug[g,t] - 1) == 0 #(4)
-
-            elif gen['time_up_minimum'] - gen['time_up_t0'] >= 1:
+            if gen['time_up_minimum'] - gen['time_up_t0'] >= 1:
                 master.uptimet0[g] = sum( (master.ug[g,t] - 1) for t in range(1, min(gen['time_up_minimum'] - gen['time_up_t0'], data['time_periods'])+1)) == 0 #(4)
         elif gen['unit_on_t0'] == 0:
             if gen['time_down_minimum'] - gen['time_down_t0'] >= 1:
@@ -152,7 +144,7 @@ def solving_master_problem(master, thermal_gens, time_periods, gen_startup_categ
     
     #solve the problem
     solver = SolverFactory('gurobi')
-    solver.solve(master, options={'MIPGap': 0.0}, tee=True)
+    solver.solve(master, options={'MIPGap': 0.1}, tee=False)
 
     #master.new3[2].pprint()
 
