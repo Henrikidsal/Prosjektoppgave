@@ -5,7 +5,7 @@ import pyomo.environ as pyo
 from pyomo.environ import Suffix
 
 # Subproblem
-def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods, gen_pwl_points, iteration):
+def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_periods, gen_pwl_points):
 
     m = ConcreteModel()
 
@@ -22,10 +22,7 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     #Slack variables to make the problem feasable
     m.slack_demand = Var(time_periods.keys(), within=NonNegativeReals)
     m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
-    PENALTY = 1e5
-
-    for x in range(iteration+1):
-        PENALTY=PENALTY*0.95
+    PENALTY = 1e7
 
     #The variables from the master problem, an alternative way of using Variables that i fix is below
     m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
@@ -50,9 +47,9 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
 
     for g in thermal_gens.keys():
         for t in time_periods.keys():
-            m.fixing_ug[g, t] = m.ug[g, t] == master_solution['ug'][g, t]
-            m.fixing_vg[g, t] = m.vg[g, t] == master_solution['vg'][g, t]
-            m.fixing_wg[g, t] = m.wg[g, t] == master_solution['wg'][g, t]
+            m.fixing_ug[g, t] = m.ug[g, t] == master_var_values['ug'][g, t]
+            m.fixing_vg[g, t] = m.vg[g, t] == master_var_values['vg'][g, t]
+            m.fixing_wg[g, t] = m.wg[g, t] == master_var_values['wg'][g, t]
 
     m.demand = Constraint(time_periods.keys())
     m.reserves = Constraint(time_periods.keys())
@@ -76,9 +73,9 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
 
     for g, gen in thermal_gens.items():
         for t in time_periods:
-            m.gen_limit1[g,t] = m.pg[g,t]+m.rg[g,t] <= (gen['power_output_maximum'] - gen['power_output_minimum'])*m.ug[g,t] - max((gen['power_output_maximum'] - gen['ramp_startup_limit']),0)*m.vg[g,t] #(17)
+            m.gen_limit1[g,t] = m.pg[g,t]+m.rg[g,t]+ max((gen['power_output_maximum'] - gen['ramp_startup_limit']),0)*m.vg[g,t] - (gen['power_output_maximum'] - gen['power_output_minimum'])*m.ug[g,t] <= 0 #(17)
             if t < len(time_periods): 
-                m.gen_limit2[g,t] = m.pg[g,t]+m.rg[g,t] <= (gen['power_output_maximum'] - gen['power_output_minimum'])*m.ug[g,t] - max((gen['power_output_maximum'] - gen['ramp_shutdown_limit']),0)*m.wg[g,t+1] #(18)
+                m.gen_limit2[g,t] = m.pg[g,t]+m.rg[g,t] + max((gen['power_output_maximum'] - gen['ramp_shutdown_limit']),0)*m.wg[g,t+1] - (gen['power_output_maximum'] - gen['power_output_minimum'])*m.ug[g,t] <= 0 #(18)
             if t > 1:
                 m.ramp_up[g,t] = m.pg[g,t]+m.rg[g,t] - m.pg[g,t-1] <= gen['ramp_up_limit'] #(19)
                 m.ramp_down[g,t] = m.pg[g,t-1] - m.pg[g,t] <= gen['ramp_down_limit'] #(20)
@@ -100,24 +97,41 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     solver.solve(m, tee=False)
     sub_cost = pyo.value(m.obj)
 
-    #This is collecting the dual values in a dictionary
-    dual_values = {}
-    relevant_constraints = [m.fixing_ug, m.fixing_vg, m.fixing_wg]
-    try:
-        for constraint in relevant_constraints:
-            constr_name = constraint.local_name
-            for index in constraint:
-                con = constraint[index]
-                dual = m.dual.get(con, 0)
-                dual_values[(constr_name, index)] = dual
-    except KeyError as e:
-        print(f"Error accessing duals: {e}")
-    
-    #print("duals: ", dual_values)
-    count_duals_gt_zero = sum(1 for dual in dual_values.values() if dual > 0)
-    count_duals_lt_zero = sum(1 for dual in dual_values.values() if dual < 0)
-    #print("Number of dual variables greater than zero:", count_duals_gt_zero)
-    #print("Number of dual variables less than zero:", count_duals_lt_zero)
+    total_slack = sum(pyo.value(m.slack_demand[t]) + pyo.value(m.slack_reserve[t]) for t in time_periods)
+    if total_slack > 1e-6:  # Use a small threshold to account for numerical precision
+        print("infeasable")
+    else:
+        print("FEASABLE")
 
-    #dual values goes to cuts, sub_cost goes to master for creating UB
+    
+    dual_values = {
+        "fixing_ug": {},
+        "fixing_vg": {},
+        "fixing_wg": {}
+    }
+
+    # Loop over thermal generators and time periods to populate the duals
+    for g in thermal_gens.keys():
+        for t in time_periods.keys():
+            dual_values["fixing_ug"][(g, t)] = m.dual[m.fixing_ug[g, t]]
+            dual_values["fixing_vg"][(g, t)] = m.dual[m.fixing_vg[g, t]]
+            dual_values["fixing_wg"][(g, t)] = m.dual[m.fixing_wg[g, t]]
+
+    #dual values goes to cuts, sub_cost goes to the loop for creating UB
     return dual_values, sub_cost
+
+
+'''
+#This is collecting the dual values in a dictionary
+dual_values = {}
+relevant_constraints = [m.fixing_ug, m.fixing_vg, m.fixing_wg]
+try:
+    for constraint in relevant_constraints:
+        constr_name = constraint.local_name
+        for index in constraint:
+            con = constraint[index]
+            dual = m.dual.get(con, 0)
+            dual_values[(constr_name, index)] = dual
+except KeyError as e:
+    print(f"Error accessing duals: {e}")
+'''

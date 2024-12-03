@@ -2,25 +2,19 @@
 from pyomo.environ import *
 from pyomo.opt import SolverFactory
 import pyomo.environ as pyo
-from benders_cuts import generate_benders_cut
-from sub_problem import subproblem
-
 
 # Initialize Benders Decomposition
-def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_startup_categories, gen_pwl_points):
+def Master_problem_pyomo(data, thermal_gens, time_periods, gen_startup_categories):
 
     master = ConcreteModel()
-
-    print('Building master problem')
 
     master.ug = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
     master.vg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
     master.wg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
     master.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary)
 
-    #The theta variable that should be representing the sub problem cost
-    master.theta = Var(bounds=(-10, None), within=Reals)
-    print(type(master.theta))
+    #The beta variable that should be representing the sub problem cost
+    master.beta = Var(bounds=(-10, None), within=Reals)
 
     #Master problem objective function
     master.obj = Objective(expr=sum(
@@ -30,7 +24,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
                             for t in time_periods
                         )
                         for g in thermal_gens
-                    ) + master.theta)
+                    ) + master.beta)
 
     #Constrains, only those with just binary variables, the constrains are 99% sure formulated correctly
     master.uptimet0 = Constraint(thermal_gens.keys())
@@ -49,7 +43,7 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
         else:
             raise Exception('Invalid unit_on_t0 for generator {}, unit_on_t0={}'.format(g, gen['unit_on_t0']))
 
-    master.logicalt0[g] = master.ug[g,1] - gen['unit_on_t0'] == master.vg[g,1] - master.wg[g,1] #(6)
+    master.logicalt0[g] = master.ug[g,1] - gen['unit_on_t0'] - master.vg[g,1] + master.wg[g,1] == 0 #(6)
 
     startup_expr = sum( 
                         sum( master.dg[g,s,t] 
@@ -101,61 +95,18 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
     #This is the way i add benders cuts, think it should be fine
     master.benders_cuts = ConstraintList()
 
-    # Iterative Benders Decomposition
-    max_iterations = 6000
-    tolerance = 100
-    iteration = 0
-    convergence = False
-    upper_bound = float('inf')
-    lower_bound = -float('inf')
+    #solve the master problem
+    solver = SolverFactory('gurobi')
+    solver.solve(master, options={'MIPGap': 0.01}, tee=False)
 
-    #Initialyzing loop
-    print('Solving master problem')
-    while not convergence and iteration < max_iterations:
-        
-        iteration += 1
-        print(f'\nIteration {iteration}')
+    master_obj_value = pyo.value(master.obj)
 
-        #solve the problem
-        solver = SolverFactory('gurobi')
-        solver.solve(master, options={'MIPGap': 0.01}, tee=False)
+    beta = pyo.value(master.beta)
 
-        #collect master variables for sub problem usage
-        master_solution = {
+    master_var_values = {
             'ug': {(g, t): value(master.ug[g, t]) for g in thermal_gens.keys() for t in time_periods.keys()},
             'vg': {(g, t): value(master.vg[g, t]) for g in thermal_gens.keys() for t in time_periods.keys()},
             'wg': {(g, t): value(master.wg[g, t]) for g in thermal_gens.keys() for t in time_periods.keys()},
             'dg': {(g, s, t): value(master.dg[g, s, t]) for g in thermal_gens.keys() for s in gen_startup_categories[g] for t in time_periods.keys()}
         }
-
-        #set LB
-        lower_bound = pyo.value(master.obj)
-        print(f'Lower bound: {lower_bound}')
-
-        #Solves sub problem
-        dual_values, sub_cost = subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods, gen_pwl_points, iteration)
-        #Setting UB
-        master_cost = pyo.value(master.obj) - pyo.value(master.theta)
-        upper_bound = min(upper_bound, master_cost + sub_cost)
-        print(f'Upper bound: {upper_bound}')
-        print("theta: ", pyo.value(master.theta))
-
-
-        #Finding gap, and setting loop conditions
-        gap = upper_bound - lower_bound
-        print(f'Optimality gap: {gap}')
-        if gap <= tolerance:
-            convergence = True
-            print('Convergence achieved!')
-            break
-
-        #Generate new benders cuts
-        generate_benders_cut(master, dual_values, sub_cost, master_solution)
-
-    if convergence:
-        print('Benders decomposition converged.')
-    else:
-        print('Maximum iterations reached without convergence.')
-
-    print('Final solution obtained.')
-    return lower_bound, upper_bound, iteration
+    return master_obj_value, master_var_values, beta, master
