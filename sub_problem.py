@@ -5,7 +5,7 @@ import pyomo.environ as pyo
 from pyomo.environ import Suffix
 
 # Subproblem
-def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods, gen_pwl_points, iteration):
+def subproblem(data, master_var_values, thermal_gens, renewable_gens, time_periods, gen_pwl_points):
 
     m = ConcreteModel()
 
@@ -21,8 +21,8 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     
     #Slack variables to make the problem feasable
     m.slack_demand = Var(time_periods.keys(), within=NonNegativeReals)
-    m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
-    PENALTY = 1e7
+    #m.slack_reserve = Var(time_periods.keys(), within=NonNegativeReals)
+    PENALTY = 500
 
     #The variables from the master problem, an alternative way of using Variables that i fix is below
     m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)
@@ -38,7 +38,7 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
             m.wg[g, t].fix(master_solution['wg'][g, t])
     '''
     # Objective Function 
-    m.obj = Objective(expr= sum(sum(m.cg[g, t] for t in time_periods) for g in thermal_gens) + PENALTY * (sum(m.slack_demand[t] for t in time_periods) + sum(m.slack_reserve[t] for t in time_periods)))
+    m.obj = Objective(expr= sum(sum(m.cg[g, t] for t in time_periods) for g in thermal_gens) + PENALTY * (sum(m.slack_demand[t] for t in time_periods) ))
 
     # Constraints (Pretty sure these are correct, since they are the same as in a different formulation without benders)
     m.fixing_ug = Constraint(thermal_gens.keys(), time_periods.keys())
@@ -47,15 +47,15 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
 
     for g in thermal_gens.keys():
         for t in time_periods.keys():
-            m.fixing_ug[g, t] = m.ug[g, t] == master_solution['ug'][g, t]
-            m.fixing_vg[g, t] = m.vg[g, t] == master_solution['vg'][g, t]
-            m.fixing_wg[g, t] = m.wg[g, t] == master_solution['wg'][g, t]
+            m.fixing_ug[g, t] = m.ug[g, t] == master_var_values['ug'][g, t]
+            m.fixing_vg[g, t] = m.vg[g, t] == master_var_values['vg'][g, t]
+            m.fixing_wg[g, t] = m.wg[g, t] == master_var_values['wg'][g, t]
 
     m.demand = Constraint(time_periods.keys())
     m.reserves = Constraint(time_periods.keys())
     for t,t_idx in time_periods.items():
         m.demand[t] = sum( m.pg[g,t]+gen['power_output_minimum']*m.ug[g,t] for (g, gen) in thermal_gens.items() ) + sum(m.pw[w,t] for w in renewable_gens) + m.slack_demand[t] == data['demand'][t_idx] #(2)
-        m.reserves[t] = sum( m.rg[g,t] for g in thermal_gens ) + m.slack_reserve[t] >= data['reserves'][t_idx] #(3)
+        m.reserves[t] = sum( m.rg[g,t] for g in thermal_gens ) >= data['reserves'][t_idx] #(3)
 
     m.rampupt0 = Constraint(thermal_gens.keys())
     m.rampdownt0 = Constraint(thermal_gens.keys())
@@ -95,9 +95,9 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
     #solver.options['OutputFlag'] = 0
     #solver.options['DualReductions'] = 0
     solver.solve(m, tee=False)
-    sub_cost = pyo.value(m.obj)
+    theta_j = pyo.value(m.obj)
 
-    total_slack = sum(pyo.value(m.slack_demand[t]) + pyo.value(m.slack_reserve[t]) for t in time_periods)
+    total_slack = sum(pyo.value(m.slack_demand[t]) for t in time_periods)
     if total_slack > 1e-6:  # Use a small threshold to account for numerical precision
         print("infeasable")
     else:
@@ -121,9 +121,19 @@ def subproblem(data, master_solution, thermal_gens, renewable_gens, time_periods
             
             # Save the dual value for fixing_wg
             dual_values["fixing_wg"][(g, t)] = m.dual[m.fixing_wg[g, t]]
+    
+    # Print the values of the slack variables
+    print("\nSlack Variable Values:") 
+    sum_slack_demand = 0
+    for t in time_periods.keys():
+        slack_demand_value = pyo.value(m.slack_demand[t])
+        sum_slack_demand += slack_demand_value
+        #slack_reserve_value = pyo.value(m.slack_reserve[t])
+        #print(f"Time Period {t}: Slack Demand = {slack_demand_value}")
+    print(f"total slack = to {sum_slack_demand}")
 
-    #dual values goes to cuts, sub_cost goes to master for creating UB
-    return dual_values, sub_cost
+    #dual values goes to cuts, theta_j goes to master for creating UB
+    return dual_values, theta_j
 
 
 '''
