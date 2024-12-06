@@ -2,21 +2,132 @@
 from dwave.system import LeapHybridCQMSampler
 from dimod import ConstrainedQuadraticModel, Binary, Real
 import json
+import copy
+import random
 
 # Load data
-data_file = "rts_gmlc/2020-01-27.json"
+data_file = "rts_gmlc/2020-02-09.json"
 print('Loading data...')
 data = json.load(open(data_file, 'r'))
 
-HOURS = 12
-data["time_periods"] = HOURS
+#INPUTS:
+random.seed(19)
+
+# How many HOURS do you want in the problem?
+HOURS = 24
+
+# How much do you want to reduce generator capasity and demand?
+reduction_percentage = 0.3
 
 # Extract data for generators and time periods
+data["time_periods"] = HOURS
 thermal_gens = data['thermal_generators']
 renewable_gens = data['renewable_generators']
 time_periods = {t+1 : t for t in range(HOURS)}
 gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) in thermal_gens.items()}
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
+demand = data['demand']
+reserves = data['reserves']
+
+################################################################################################
+def reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_percentage, HOURS):
+
+    # Deep copy to avoid modifying the original data
+    thermal_gens = copy.deepcopy(thermal_gens)
+    renewable_gens = copy.deepcopy(renewable_gens)
+    demand = copy.deepcopy(demand)
+    reserves = copy.deepcopy(reserves)
+    
+    # Calculate the number of generators to remove
+    num_thermal = len(thermal_gens)
+    num_renewable = len(renewable_gens)
+    
+    thermal_to_remove = round(num_thermal * reduction_percentage)
+    renewable_to_remove = round(num_renewable * reduction_percentage)
+    
+    # Ensure we don't attempt to remove more generators than exist
+    thermal_to_remove = min(thermal_to_remove, num_thermal)
+    renewable_to_remove = min(renewable_to_remove, num_renewable)
+    
+    # Remove thermal generators randomly
+    removed_thermal_capacity = 0
+    if thermal_to_remove > 0:
+        thermal_gen_keys = list(thermal_gens.keys())
+        thermal_removed = random.sample(thermal_gen_keys, thermal_to_remove)
+        # Sum the capacities of removed thermal generators
+        removed_thermal_capacity = sum(thermal_gens[g]['power_output_maximum'] for g in thermal_removed)
+        # Remove the generators from the dictionary
+        for g in thermal_removed:
+            del thermal_gens[g]
+
+    # Remove renewable generators randomly
+    removed_renewable_capacity = [0] * HOURS
+    if renewable_to_remove > 0:
+        renewable_gen_keys = list(renewable_gens.keys())
+        renewable_removed = random.sample(renewable_gen_keys, renewable_to_remove)
+        # Sum the per-hour capacities of removed renewable generators
+        for w in renewable_removed:
+            gen_capacity = renewable_gens[w]['power_output_maximum'][:HOURS]
+            for t in range(HOURS):
+                removed_renewable_capacity[t] += gen_capacity[t]
+        # Remove the generators from the dictionary
+        for w in renewable_removed:
+            del renewable_gens[w]
+    
+    # Step 1: Update demand by subtracting removed renewable capacities per hour
+    demand_updated_1 = []
+    for t in range(HOURS):
+        updated_demand = demand[t] - removed_renewable_capacity[t]
+        demand_updated_1.append(max(updated_demand, 0))
+
+    # Calculate total thermal capacity before removal
+    total_initial_thermal_capacity = sum(gen['power_output_maximum'] for gen in thermal_gens.values()) + removed_thermal_capacity
+    
+    
+    # Calculate scale_factor based on thermal capacity removed
+    scale_factor = removed_thermal_capacity / total_initial_thermal_capacity
+
+    total_scale_factor = (removed_thermal_capacity + sum(removed_renewable_capacity)) / (total_initial_thermal_capacity + total_renewable_capacity_before)
+    
+    # Step 2: Update demand by applying the scale_factor
+    demand_updated_2 = [d * (1 - scale_factor) for d in demand_updated_1]
+    
+    # Update reserves by applying the scale_factor
+    reserves_updated = [r * (1 - scale_factor) for r in reserves]
+
+    demandd = [d * total_scale_factor for d in demand]
+
+    
+    return thermal_gens, renewable_gens, demandd, reserves_updated
+
+
+total_thermal_capacity_before = sum(gen['power_output_maximum'] for gen in thermal_gens.values())*HOURS
+print(f"Total thermal capacity before function: {total_thermal_capacity_before} MW")
+total_renewable_capacity_before = sum(sum(gen['power_output_maximum'][:HOURS]) for gen in renewable_gens.values())
+print(f"Total renewable capacity before function: {total_renewable_capacity_before} MW")
+total_demand_before = sum(demand[t] for t in range(HOURS))
+print(f"Total demand before function: {total_demand_before} MW")
+total_reserves_before = sum(reserves)
+print(f"Total reserves before function: {total_reserves_before} MW")
+
+thermal_gens, renewable_gens, demand, reserves = reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_percentage, HOURS)
+
+
+total_thermal_capacity_after = sum(gen['power_output_maximum'] for gen in thermal_gens.values())*HOURS
+print(f"Total thermal capacity after function: {total_thermal_capacity_after} MW")
+total_renewable_capacity_after = sum(sum(gen['power_output_maximum'][:HOURS]) for gen in renewable_gens.values())
+print(f"Total renewable capacity after function: {total_renewable_capacity_after} MW")
+total_demand_after = sum(demand)
+print(f"Total demand after function: {total_demand_after} MW")
+total_reserves_after = sum(reserves)
+print(f"Total reserves after function: {total_reserves_after} MW")
+
+num_thermal_gens = len(thermal_gens)
+num_renewable_gens = len(renewable_gens)
+print(f"Number of thermal generators: {num_thermal_gens}")
+print(f"Number of renewable generators: {num_renewable_gens}")
+
+################################################################################################
 
 print('Building model...')
 cqm = ConstrainedQuadraticModel()
@@ -27,7 +138,7 @@ rg = {}  # Reserves
 ug = {}  # Unit on/off
 vg = {}  # Unit startup
 wg = {}  # Unit shutdown
-dg = {}
+dg = {}  
 lg = {}
 pw = {}  # Power generation
 
