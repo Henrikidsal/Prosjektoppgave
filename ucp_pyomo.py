@@ -1,12 +1,10 @@
-# Import necessary libraries 
-from dwave.system import LeapHybridCQMSampler
-from dimod import ConstrainedQuadraticModel, Binary, Real
+from pyomo.environ import *
 import json
+from pyomo.opt import SolverFactory
 import copy
 import random
 import matplotlib.pyplot as plt
 import numpy as np
-
 # Load data
 data_file = "rts_gmlc/2020-01-27.json"
 print('loading data')
@@ -19,7 +17,7 @@ random.seed(19)
 HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.9
+reduction_percentage = 0.0
 
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
@@ -145,81 +143,55 @@ print(f"Number of renewable generators: {num_renewable_gens}")
 ################################################################################################
 
 print('Building model...')
-cqm = ConstrainedQuadraticModel()
+m = ConcreteModel()
 
-cg = {}  # Generation cost
-pg = {}  # Power generation above minimum
-rg = {}  # Reserves
-ug = {}  # Unit on/off
-vg = {}  # Unit startup
-wg = {}  # Unit shutdown
-dg = {}  
-lg = {}
-pw = {}  # Power generation
+m.cg = Var(thermal_gens.keys(), time_periods.keys())
+m.pg = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)  
+m.rg = Var(thermal_gens.keys(), time_periods.keys(), within=NonNegativeReals)  
+m.pw = Var(renewable_gens.keys(), time_periods.keys(), within=NonNegativeReals)
+m.ug = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
+m.vg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
+m.wg = Var(thermal_gens.keys(), time_periods.keys(), within=Binary) 
+m.dg = Var(((g,s,t) for g in thermal_gens for s in gen_startup_categories[g] for t in time_periods), within=Binary) ##
+m.lg = Var(((g,l,t) for g in thermal_gens for l in gen_pwl_points[g] for t in time_periods), within=UnitInterval) ##
 
-#This section is only here in Dwave, not neccesary in pyomo
-# Define variables for thermal generators
-for g, gen in thermal_gens.items():
-    for t in time_periods:
-        # Continuous variables
-        cg[g, t] = Real(f'cg_{g}_{t}')
-        pg[g, t] = Real(f'pg_{g}_{t}', lower_bound=0)
-        rg[g, t] = Real(f'rg_{g}_{t}', lower_bound=0)
-        # Binary variables
-        ug[g, t] = Binary(f'ug_{g}_{t}')
-        vg[g, t] = Binary(f'vg_{g}_{t}')
-        wg[g, t] = Binary(f'wg_{g}_{t}')
+m.obj = Objective(expr=sum(
+                sum(
+                    m.cg[g,t] + gen['piecewise_production'][0]['cost']*m.ug[g,t]
+                    + sum( gen_startup['cost']*m.dg[g,s,t] for (s, gen_startup) in enumerate(gen['startup']))
+                for t in time_periods)
+            for g, gen in thermal_gens.items() )
+            )#(1)
 
-        # Piecewise linear variables
-        for l in gen_pwl_points[g]:
-            lg[g, l, t] = Real(
-                f'lg_{g}_{l}_{t}', lower_bound=0, upper_bound=1)
+m.demand = Constraint(time_periods.keys())
+m.reserves = Constraint(time_periods.keys())
+for t,t_idx in time_periods.items():
+    m.demand[t] = sum( m.pg[g,t]+gen['power_output_minimum']*m.ug[g,t] for (g, gen) in thermal_gens.items() ) + sum( m.pw[w,t] for w in renewable_gens ) == demand[t_idx] #(2)
+    m.reserves[t] = sum( m.rg[g,t] for g in thermal_gens ) >= reserves[t_idx] #(3)
 
-        # Startup categories
-        for s in gen_startup_categories[g]:
-            dg[g, s, t] = Binary(f'dg_{g}_{s}_{t}')
+m.uptimet0 = Constraint(thermal_gens.keys())
+m.downtimet0 = Constraint(thermal_gens.keys())
+m.logicalt0 = Constraint(thermal_gens.keys())
+m.startupt0 = Constraint(thermal_gens.keys())
 
-# Define variables for renewable generators
-for w, gen in renewable_gens.items():
-    for t in time_periods:
-        pw[w, t] = Real(f'pw_{w}_{t}', lower_bound=0)
-
-# Objective Function
-objective = 0
-for g, gen in thermal_gens.items():
-    piecewise_cost0 = gen['piecewise_production'][0]['cost']
-    for t in time_periods:
-        # Generation cost and startup costs
-        gen_cost = cg[g, t]
-        startup_cost = sum(
-            gen['startup'][s]['cost'] * dg[g, s, t]
-            for s in gen_startup_categories[g]
-        )
-        objective += gen_cost + piecewise_cost0 * ug[g, t] + startup_cost
-
-# Set the objective in the CQM
-cqm.set_objective(objective)
-
-# Constraints
-for t, t_idx in time_periods.items():
-    cqm.add_constraint(sum(pg[g, t] + thermal_gens[g]['power_output_minimum'] * ug[g, t] for g in thermal_gens) + sum(pw[w, t] for w in renewable_gens) == data['demand'][t_idx], label=f'demand_constraint_{t}') #(2)
-    cqm.add_constraint(sum(rg[g, t] for g in thermal_gens) >= data['reserves'][t_idx], label=f'reserve_constraint_{t}') #(3)
-    
+m.rampupt0 = Constraint(thermal_gens.keys())
+m.rampdownt0 = Constraint(thermal_gens.keys())
+m.shutdownt0 = Constraint(thermal_gens.keys())
 
 for g, gen in thermal_gens.items():
     if gen['unit_on_t0'] == 1:
         if gen['time_up_minimum'] - gen['time_up_t0'] >= 1:
-            cqm.add_constraint(sum((ug[g, t] - 1) for t in range(1, min(gen['time_up_minimum'] - gen['time_up_t0'], data['time_periods'])+1)) == 0, label=f'uptime_{g}_t0') #(4)
+            m.uptimet0[g] = sum( (m.ug[g,t] - 1) for t in range(1, min(gen['time_up_minimum'] - gen['time_up_t0'], data['time_periods'])+1)) == 0 #(4)
     elif gen['unit_on_t0'] == 0:
         if gen['time_down_minimum'] - gen['time_down_t0'] >= 1:
-            cqm.add_constraint(sum(ug[g,t] for t in range(1, min(gen['time_down_minimum'] - gen['time_down_t0'], data['time_periods'])+1)) == 0, label=f'downtime_{g}_t0') #(5)
+            m.downtimet0[g] = sum( m.ug[g,t] for t in range(1, min(gen['time_down_minimum'] - gen['time_down_t0'], data['time_periods'])+1)) == 0 #(5)
     else:
         raise Exception('Invalid unit_on_t0 for generator {}, unit_on_t0={}'.format(g, gen['unit_on_t0']))
 
-    cqm.add_constraint(ug[g,1] - gen['unit_on_t0'] -vg[g, 1] +wg[g, 1] == 0, label=f'logical_{g}_t0') #(6)
+    m.logicalt0[g] = m.ug[g,1] - gen['unit_on_t0'] == m.vg[g,1] - m.wg[g,1] #(6)
 
     startup_expr = sum( 
-                        sum( dg[g,s,t] 
+                        sum( m.dg[g,s,t] 
                                 for t in range(
                                                 max(1, gen['startup'][s+1]['lag']-gen['time_down_t0']+1),
                                                 min(gen['startup'][s+1]['lag']-1, data['time_periods'])+1
@@ -229,99 +201,89 @@ for g, gen in thermal_gens.items():
     if isinstance(startup_expr, int):
         pass
     else:
-        cqm.add_constraint(startup_expr == 0, label=f'startup_allowed_{g}_t0') #(7)
+        m.startupt0[g] = startup_expr == 0 #(7)
 
-    cqm.add_constraint(pg[g, 1] + rg[g, 1] - gen['unit_on_t0']*(gen['power_output_t0'] - gen['power_output_minimum']) <= gen['ramp_up_limit'], label=f'ramp_up_{g}_t0') #(8)
+    m.rampupt0[g] = m.pg[g,1] + m.rg[g,1] - gen['unit_on_t0']*(gen['power_output_t0']-gen['power_output_minimum']) <= gen['ramp_up_limit'] #(8)
 
-    cqm.add_constraint(gen['unit_on_t0']*(gen['power_output_t0'] - gen['power_output_minimum'])- pg[g, 1] <= gen['ramp_down_limit'], label=f'ramp_down_{g}_t0') #(9)
+    m.rampdownt0[g] = gen['unit_on_t0']*(gen['power_output_t0']-gen['power_output_minimum']) - m.pg[g,1] <= gen['ramp_down_limit'] #(9)
 
-    shutdown_constr = gen['unit_on_t0']*(gen['power_output_t0']-gen['power_output_minimum']) <= gen['unit_on_t0']*(gen['power_output_maximum'] - gen['power_output_minimum']) - max((gen['power_output_maximum'] - gen['ramp_shutdown_limit']),0)*wg[g,1] #(10)
+    shutdown_constr = gen['unit_on_t0']*(gen['power_output_t0']-gen['power_output_minimum']) <= gen['unit_on_t0']*(gen['power_output_maximum'] - gen['power_output_minimum']) - max((gen['power_output_maximum'] - gen['ramp_shutdown_limit']),0)*m.wg[g,1] #(10)
 
     if isinstance(shutdown_constr, bool):
         pass
     else:
-        cqm.add_constraint(shutdown_constr, label=f'shutdown_{g}_t0')
+        m.shutdownt0[g] = shutdown_constr
+
+m.mustrun = Constraint(thermal_gens.keys(), time_periods.keys())
+m.logical = Constraint(thermal_gens.keys(), time_periods.keys())
+m.uptime = Constraint(thermal_gens.keys(), time_periods.keys())
+m.downtime = Constraint(thermal_gens.keys(), time_periods.keys())
+m.startup_select = Constraint(thermal_gens.keys(), time_periods.keys())
+m.gen_limit1 = Constraint(thermal_gens.keys(), time_periods.keys())
+m.gen_limit2 = Constraint(thermal_gens.keys(), time_periods.keys())
+m.ramp_up = Constraint(thermal_gens.keys(), time_periods.keys())
+m.ramp_down = Constraint(thermal_gens.keys(), time_periods.keys())
+m.power_select = Constraint(thermal_gens.keys(), time_periods.keys())
+m.cost_select = Constraint(thermal_gens.keys(), time_periods.keys())
+m.on_select = Constraint(thermal_gens.keys(), time_periods.keys())
 
 for g, gen in thermal_gens.items():
     for t in time_periods:
-        cqm.add_constraint(ug[g,t] >= gen['must_run'], label=f'must_run_{g}_{t}') #(11)
+        m.mustrun[g,t] = m.ug[g,t] >= gen['must_run'] #(11)
 
         if t > 1:
-            cqm.add_constraint(ug[g,t] - ug[g,t-1] - (vg[g,t] - wg[g,t]) == 0, label=f'logical_{g}_{t}') #(12)
+            m.logical[g,t] = m.ug[g,t] - m.ug[g,t-1] == m.vg[g,t] - m.wg[g,t] #(12)
 
         UT = min(gen['time_up_minimum'], data['time_periods'])
         if t >= UT:
-            cqm.add_constraint(sum(vg[g,t] for t in range(t-UT+1, t+1)) - ug[g,t]<= 0, label=f'uptime_{g}_{t}') #(13)
+            m.uptime[g,t] = sum(m.vg[g,t] for t in range(t-UT+1, t+1)) <= m.ug[g,t] #(13)
         DT = min(gen['time_down_minimum'], data['time_periods'])
         if t >= DT:
-            cqm.add_constraint(sum(wg[g,t] for t in range(t-DT+1, t+1)) - (1-ug[g,t]) <= 0, label=f'downtime_{g}_{t}') #(14)
-        cqm.add_constraint(vg[g,t] - sum(dg[g,s,t] for s,_ in enumerate(gen['startup'])) == 0, label=f'startup_select_{g}_{t}') #(16)
+            m.downtime[g,t] = sum(m.wg[g,t] for t in range(t-DT+1, t+1)) <= 1-m.ug[g,t] #(14)
+        m.startup_select[g,t] = m.vg[g,t] == sum(m.dg[g,s,t] for s,_ in enumerate(gen['startup'])) #(16)
 
-        cqm.add_constraint(pg[g,t]+rg[g,t] - ((gen['power_output_maximum'] - gen['power_output_minimum'])*ug[g,t] - max((gen['power_output_maximum'] - gen['ramp_startup_limit']),0)*vg[g,t]) <= 0, label=f'gen_limit1_{g}_{t}') #(17)
+        m.gen_limit1[g,t] = m.pg[g,t]+m.rg[g,t] <= (gen['power_output_maximum'] - gen['power_output_minimum'])*m.ug[g,t] - max((gen['power_output_maximum'] - gen['ramp_startup_limit']),0)*m.vg[g,t] #(17)
 
         if t < len(time_periods): 
-            cqm.add_constraint(pg[g,t]+rg[g,t] - ((gen['power_output_maximum'] - gen['power_output_minimum'])*ug[g,t] - max((gen['power_output_maximum'] - gen['ramp_shutdown_limit']),0)*wg[g,t+1]) <= 0, label=f'gen_limit2_{g}_{t}') #(18)
+            m.gen_limit2[g,t] = m.pg[g,t]+m.rg[g,t] <= (gen['power_output_maximum'] - gen['power_output_minimum'])*m.ug[g,t] - max((gen['power_output_maximum'] - gen['ramp_shutdown_limit']),0)*m.wg[g,t+1] #(18)
 
         if t > 1:
-            cqm.add_constraint(pg[g,t]+rg[g,t] - pg[g,t-1] <= gen['ramp_up_limit'], label=f'ramp_up_{g}_{t}') #(19)
-            cqm.add_constraint(pg[g,t-1] - pg[g,t] <= gen['ramp_down_limit'], label=f'ramp_down_{g}_{t}') #(20
+            m.ramp_up[g,t] = m.pg[g,t]+m.rg[g,t] - m.pg[g,t-1] <= gen['ramp_up_limit'] #(19)
+            m.ramp_down[g,t] = m.pg[g,t-1] - m.pg[g,t] <= gen['ramp_down_limit'] #(20
 
         piece_mw1 = gen['piecewise_production'][0]['mw']
         piece_cost1 = gen['piecewise_production'][0]['cost']
-        cqm.add_constraint(pg[g,t] - sum((piece['mw'] - piece_mw1)*lg[g,l,t] for l,piece in enumerate(gen['piecewise_production'])) == 0, label=f'power_select_{g}_{t}') #(21)
-        cqm.add_constraint(cg[g,t] - sum((piece['cost'] - piece_cost1)*lg[g,l,t] for l,piece in enumerate(gen['piecewise_production'])) == 0, label=f'cost_select_{g}_{t}') #(22)
-        cqm.add_constraint(ug[g,t] - sum(lg[g,l,t] for l,_ in enumerate(gen['piecewise_production'])) == 0, label=f'on_select_{g}_{t}') #(23)
+        m.power_select[g,t] = m.pg[g,t] == sum( (piece['mw'] - piece_mw1)*m.lg[g,l,t] for l,piece in enumerate(gen['piecewise_production'])) #(21)
+        m.cost_select[g,t] = m.cg[g,t] == sum( (piece['cost'] - piece_cost1)*m.lg[g,l,t] for l,piece in enumerate(gen['piecewise_production'])) #(22)
+        m.on_select[g,t] = m.ug[g,t] == sum(m.lg[g,l,t] for l,_ in enumerate(gen['piecewise_production'])) #(23)
 
+
+m.startup_allowed = Constraint(m.dg.index_set())
 for g, gen in thermal_gens.items():
     for s,_ in enumerate(gen['startup'][:-1]): ## all but last
         for t in time_periods:
             if t >= gen['startup'][s+1]['lag']:
-                cqm.add_constraint(dg[g,s,t] - sum(wg[g,t-i] for i in range(gen['startup'][s]['lag'], gen['startup'][s+1]['lag'])) <= 0, label=f'startup_allowed_{g}_{s}_{t}') #(15)
+                m.startup_allowed[g,s,t] = m.dg[g,s,t] <= sum(m.wg[g,t-i] for i in range(gen['startup'][s]['lag'], gen['startup'][s+1]['lag'])) #(15)
 
 for w, gen in renewable_gens.items():
     for t, t_idx in time_periods.items():
-        pw[w, t].lower_bound = gen['power_output_minimum'][t_idx] #(24)
-        pw[w, t].upper_bound = gen['power_output_maximum'][t_idx] #(24)
+        m.pw[w,t].setlb(gen['power_output_minimum'][t_idx]) #(24)
+        m.pw[w,t].setub(gen['power_output_maximum'][t_idx]) #(24)
 
-print("Model setup complete.")
-print(f"Number of variables: {len(cqm.variables)}")
-print(f"Number of constraints: {len(cqm.constraints)}")
+print("model setup complete")
 
-# Solve the CQM
-print("Solving...")
-sampler = LeapHybridCQMSampler()
-solution = sampler.sample_cqm(cqm, time_limit=150)
-print("Finished sampling...")
+gurobi = SolverFactory('gurobi')
 
-feasible_sampleset = solution.filter(lambda d: d.is_feasible)
-if len(feasible_sampleset) > 0:
-    best_solution = feasible_sampleset.first
-    print("Objective function value:", best_solution.energy)
-else:
-    print("No feasible solution found.")
+print("solving")
+result = gurobi.solve(m, options={'MIPGap':0.0005}, tee=True)
 
-data_ext = json.load(open('C:/Users/Henrik/OneDrive - NTNU/skole/semester 11/Fordypnings-prosjekt/Prosjektoppgave/plots_dwave_test.json'))
-print(data_ext['vectors']['energy']['data'])
-energy_data_ext = data_ext['vectors']['energy']['data']
-best_sols_ext = np.where(np.array(energy_data_ext) <= 3e+6)
-feas_ext = data_ext['vectors']['is_feasible']['data']
-print(np.array(energy_data_ext)[feas_ext].shape[0] / np.array(energy_data_ext).shape[0])
-print(np.array(energy_data_ext)[feas_ext].shape[0])
-print(np.array(energy_data_ext).shape[0])
+num_variables = sum(1 for _ in m.component_data_objects(Var, active=True))
+print(f"Number of variables: {num_variables}")
 
-plt.hist(np.array(energy_data_ext), bins=10 ** np.linspace(4, 6.8, 120), alpha=1, label='All hybrid solutions')
-plt.hist(np.array(energy_data_ext)[feas_ext], bins=10 ** np.linspace(4, 6.8, 120), alpha=1, label='Feasible solutions')
-plt.axvline(1.230430207391e+06, color='red', linestyle='dashed', linewidth=1, label='Classical optimal solution')
-plt.xlim([1e+6, 5e+7])
+num_constraints = sum(len(constraint) for constraint in m.component_objects(Constraint, active=True))
+print(f"Number of constraints: {num_constraints}")
 
-plt.ylabel('Number of solutions', fontsize=15)
-plt.xlabel('Objective function value', fontsize=15)
-plt.xscale('log')
-plt.yscale("log")
-plt.xticks(fontsize=13)
-plt.yticks(fontsize=13)
-plt.ylim(1e0, 2e3)
-plt.legend(loc="upper left", fontsize=13)
-plt.savefig('C:/Users/Henrik/OneDrive - NTNU/skole/semester 11/Fordypnings-prosjekt/Prosjektoppgave/plots_dwave_test.pdf', bbox_inches="tight")
-plt.show()
+m.solutions.load_from(result)
+print(f"Objective function value: {value(m.obj)}")
+
 
