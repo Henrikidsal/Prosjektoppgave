@@ -4,28 +4,30 @@ from dimod import ConstrainedQuadraticModel, Binary, Real
 import json
 import copy
 import random
+import matplotlib.pyplot as plt
+import numpy as np
 
 # Load data
-data_file = "rts_gmlc/2020-02-09.json"
-print('Loading data...')
+data_file = "rts_gmlc/2020-01-27.json"
+print('loading data')
 data = json.load(open(data_file, 'r'))
 
 #INPUTS:
 random.seed(19)
 
 # How many HOURS do you want in the problem?
-HOURS = 24
+HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.3
+reduction_percentage = 0.9
 
 # Extract data for generators and time periods
-data["time_periods"] = HOURS
 thermal_gens = data['thermal_generators']
 renewable_gens = data['renewable_generators']
 time_periods = {t+1 : t for t in range(HOURS)}
 gen_startup_categories = {g : list(range(0, len(gen['startup']))) for (g, gen) in thermal_gens.items()}
 gen_pwl_points = {g : list(range(0, len(gen['piecewise_production']))) for (g, gen) in thermal_gens.items()}
+
 demand = data['demand']
 reserves = data['reserves']
 
@@ -73,33 +75,46 @@ def reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_
         # Remove the generators from the dictionary
         for w in renewable_removed:
             del renewable_gens[w]
-    
+    '''
     # Step 1: Update demand by subtracting removed renewable capacities per hour
     demand_updated_1 = []
     for t in range(HOURS):
         updated_demand = demand[t] - removed_renewable_capacity[t]
         demand_updated_1.append(max(updated_demand, 0))
-
+    
     # Calculate total thermal capacity before removal
     total_initial_thermal_capacity = sum(gen['power_output_maximum'] for gen in thermal_gens.values()) + removed_thermal_capacity
-    
     
     # Calculate scale_factor based on thermal capacity removed
     scale_factor = removed_thermal_capacity / total_initial_thermal_capacity
 
-    total_scale_factor = (removed_thermal_capacity + sum(removed_renewable_capacity)) / (total_initial_thermal_capacity + total_renewable_capacity_before)
-    
     # Step 2: Update demand by applying the scale_factor
     demand_updated_2 = [d * (1 - scale_factor) for d in demand_updated_1]
     
     # Update reserves by applying the scale_factor
     reserves_updated = [r * (1 - scale_factor) for r in reserves]
 
-    demandd = [d * total_scale_factor for d in demand]
-
+    return thermal_gens, renewable_gens, demand_updated_2, reserves_updated
+    '''
+    # Calculate total capacities before removal
+    total_initial_thermal_capacity = sum(gen['power_output_maximum'] for gen in thermal_gens.values()) + removed_thermal_capacity
+    total_initial_renewable_capacity = sum(sum(gen['power_output_maximum'][:HOURS]) for gen in renewable_gens.values()) + sum(removed_renewable_capacity)
     
-    return thermal_gens, renewable_gens, demandd, reserves_updated
+    # Calculate total scale factor
+    total_removed_capacity = removed_thermal_capacity * HOURS + sum(removed_renewable_capacity)
+    total_initial_capacity = total_initial_thermal_capacity * HOURS + total_initial_renewable_capacity
+    total_scale_factor = total_removed_capacity / total_initial_capacity if total_initial_capacity > 0 else 0
 
+    # Scale demand for every hour
+    scaled_demand = [demand[t] * (1 - total_scale_factor) for t in range(HOURS)]
+
+    # Scale reserves proportionally to the scaled demand
+    total_initial_demand = sum(demand)
+    total_scaled_demand = sum(scaled_demand)
+    reserve_scale_factor = total_scaled_demand / total_initial_demand if total_initial_demand > 0 else 1
+    scaled_reserves = [r * reserve_scale_factor for r in reserves]
+
+    return thermal_gens, renewable_gens, scaled_demand, scaled_reserves
 
 total_thermal_capacity_before = sum(gen['power_output_maximum'] for gen in thermal_gens.values())*HOURS
 print(f"Total thermal capacity before function: {total_thermal_capacity_before} MW")
@@ -284,3 +299,29 @@ if len(feasible_sampleset) > 0:
     print("Objective function value:", best_solution.energy)
 else:
     print("No feasible solution found.")
+
+data_ext = json.load(open('C:/Users/Henrik/OneDrive - NTNU/skole/semester 11/Fordypnings-prosjekt/Prosjektoppgave/plots_dwave_test.json'))
+print(data_ext['vectors']['energy']['data'])
+energy_data_ext = data_ext['vectors']['energy']['data']
+best_sols_ext = np.where(np.array(energy_data_ext) <= 3e+6)
+feas_ext = data_ext['vectors']['is_feasible']['data']
+print(np.array(energy_data_ext)[feas_ext].shape[0] / np.array(energy_data_ext).shape[0])
+print(np.array(energy_data_ext)[feas_ext].shape[0])
+print(np.array(energy_data_ext).shape[0])
+
+plt.hist(np.array(energy_data_ext), bins=10 ** np.linspace(4, 6.8, 120), alpha=1, label='All hybrid solutions')
+plt.hist(np.array(energy_data_ext)[feas_ext], bins=10 ** np.linspace(4, 6.8, 120), alpha=1, label='Feasible solutions')
+plt.axvline(1.230430207391e+06, color='red', linestyle='dashed', linewidth=1, label='Classical optimal solution')
+plt.xlim([1e+6, 5e+7])
+
+plt.ylabel('Number of solutions', fontsize=15)
+plt.xlabel('Objective function value', fontsize=15)
+plt.xscale('log')
+plt.yscale("log")
+plt.xticks(fontsize=13)
+plt.yticks(fontsize=13)
+plt.ylim(1e0, 2e3)
+plt.legend(loc="upper left", fontsize=13)
+plt.savefig('C:/Users/Henrik/OneDrive - NTNU/skole/semester 11/Fordypnings-prosjekt/Prosjektoppgave/plots_dwave_test.pdf', bbox_inches="tight")
+plt.show()
+

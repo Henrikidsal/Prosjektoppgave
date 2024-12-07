@@ -3,9 +3,8 @@ import json
 from pyomo.opt import SolverFactory
 import copy
 import random
-
-
-
+import matplotlib.pyplot as plt
+import numpy as np
 # Load data
 data_file = "rts_gmlc/2020-01-27.json"
 print('loading data')
@@ -15,10 +14,10 @@ data = json.load(open(data_file, 'r'))
 random.seed(19)
 
 # How many HOURS do you want in the problem?
-HOURS = 24
+HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.5
+reduction_percentage = 0.0
 
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
@@ -74,7 +73,7 @@ def reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_
         # Remove the generators from the dictionary
         for w in renewable_removed:
             del renewable_gens[w]
-    
+    '''
     # Step 1: Update demand by subtracting removed renewable capacities per hour
     demand_updated_1 = []
     for t in range(HOURS):
@@ -84,26 +83,36 @@ def reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_
     # Calculate total thermal capacity before removal
     total_initial_thermal_capacity = sum(gen['power_output_maximum'] for gen in thermal_gens.values()) + removed_thermal_capacity
     
-    
     # Calculate scale_factor based on thermal capacity removed
     scale_factor = removed_thermal_capacity / total_initial_thermal_capacity
 
-    
     # Step 2: Update demand by applying the scale_factor
     demand_updated_2 = [d * (1 - scale_factor) for d in demand_updated_1]
     
     # Update reserves by applying the scale_factor
     reserves_updated = [r * (1 - scale_factor) for r in reserves]
-    '''
-    total_scale_factor = (removed_thermal_capacity + sum(removed_renewable_capacity)) / (total_initial_thermal_capacity + total_renewable_capacity_before)
-    demand_updated_3 = [d * (1-total_scale_factor) for d in demand]
-    for t in range(HOURS):
-        if len(demand_updated_3) > HOURS:
-            demand_updated_3.pop()
 
-    '''
     return thermal_gens, renewable_gens, demand_updated_2, reserves_updated
+    '''
+    # Calculate total capacities before removal
+    total_initial_thermal_capacity = sum(gen['power_output_maximum'] for gen in thermal_gens.values()) + removed_thermal_capacity
+    total_initial_renewable_capacity = sum(sum(gen['power_output_maximum'][:HOURS]) for gen in renewable_gens.values()) + sum(removed_renewable_capacity)
+    
+    # Calculate total scale factor
+    total_removed_capacity = removed_thermal_capacity * HOURS + sum(removed_renewable_capacity)
+    total_initial_capacity = total_initial_thermal_capacity * HOURS + total_initial_renewable_capacity
+    total_scale_factor = total_removed_capacity / total_initial_capacity if total_initial_capacity > 0 else 0
 
+    # Scale demand for every hour
+    scaled_demand = [demand[t] * (1 - total_scale_factor) for t in range(HOURS)]
+
+    # Scale reserves proportionally to the scaled demand
+    total_initial_demand = sum(demand)
+    total_scaled_demand = sum(scaled_demand)
+    reserve_scale_factor = total_scaled_demand / total_initial_demand if total_initial_demand > 0 else 1
+    scaled_reserves = [r * reserve_scale_factor for r in reserves]
+
+    return thermal_gens, renewable_gens, scaled_demand, scaled_reserves
 
 total_thermal_capacity_before = sum(gen['power_output_maximum'] for gen in thermal_gens.values())*HOURS
 print(f"Total thermal capacity before function: {total_thermal_capacity_before} MW")
@@ -152,12 +161,12 @@ m.obj = Objective(expr=sum(
                     + sum( gen_startup['cost']*m.dg[g,s,t] for (s, gen_startup) in enumerate(gen['startup']))
                 for t in time_periods)
             for g, gen in thermal_gens.items() )
-            ) #(1)
+            )#(1)
 
 m.demand = Constraint(time_periods.keys())
 m.reserves = Constraint(time_periods.keys())
 for t,t_idx in time_periods.items():
-    m.demand[t] = sum( m.pg[g,t]+gen['power_output_minimum']*m.ug[g,t] for (g, gen) in thermal_gens.items() ) + sum( m.pw[w,t] for w in renewable_gens )  == demand[t_idx] #(2)
+    m.demand[t] = sum( m.pg[g,t]+gen['power_output_minimum']*m.ug[g,t] for (g, gen) in thermal_gens.items() ) + sum( m.pw[w,t] for w in renewable_gens ) == demand[t_idx] #(2)
     m.reserves[t] = sum( m.rg[g,t] for g in thermal_gens ) >= reserves[t_idx] #(3)
 
 m.uptimet0 = Constraint(thermal_gens.keys())
@@ -276,3 +285,5 @@ print(f"Number of constraints: {num_constraints}")
 
 m.solutions.load_from(result)
 print(f"Objective function value: {value(m.obj)}")
+
+
