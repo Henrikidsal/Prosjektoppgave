@@ -21,7 +21,7 @@ random.seed(19)
 HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.2
+reduction_percentage = 0.15
 
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
@@ -292,6 +292,7 @@ feasible_sampleset = solution.filter(lambda d: d.is_feasible)
 num_feasible_solutions = len(feasible_sampleset)
 print(f"Number of feasible solutions: {num_feasible_solutions}")
 
+objective_function_values = list(solution.record["energy"])
 
 # Check if any feasible solution is available
 if num_feasible_solutions > 0:
@@ -306,10 +307,10 @@ else:
 
 
 
-import csv 
-file_path="plot_data.csv"
+import csv
+file_path="PLOTS.csv"
 
-new_row = [total_solutions, num_feasible_solutions, best_solution_energy, TIME_LIMIT, HOURS, reduction_percentage, num_thermal_gens, num_renewable_gens, num_variables, num_constraints]
+new_row = [total_solutions, num_feasible_solutions, objective_function_values, best_solution_energy, TIME_LIMIT, HOURS, reduction_percentage, num_thermal_gens, num_renewable_gens, num_variables, num_constraints]
 
 with open(file_path, mode='a', newline='') as file:
     writer = csv.writer(file)
