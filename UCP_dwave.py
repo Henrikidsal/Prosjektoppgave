@@ -6,9 +6,11 @@ import copy
 import random
 import matplotlib.pyplot as plt
 import numpy as np
+import csv
+
 
 # Load data
-data_file = "rts_gmlc/2020-01-27.json"
+data_file = "rts_gmlc/2020-11-25.json"
 print('loading data')
 data = json.load(open(data_file, 'r'))
 
@@ -19,7 +21,7 @@ random.seed(19)
 HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.9
+reduction_percentage = 0.2
 
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
@@ -116,26 +118,9 @@ def reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_
 
     return thermal_gens, renewable_gens, scaled_demand, scaled_reserves
 
-total_thermal_capacity_before = sum(gen['power_output_maximum'] for gen in thermal_gens.values())*HOURS
-print(f"Total thermal capacity before function: {total_thermal_capacity_before} MW")
-total_renewable_capacity_before = sum(sum(gen['power_output_maximum'][:HOURS]) for gen in renewable_gens.values())
-print(f"Total renewable capacity before function: {total_renewable_capacity_before} MW")
-total_demand_before = sum(demand[t] for t in range(HOURS))
-print(f"Total demand before function: {total_demand_before} MW")
-total_reserves_before = sum(reserves)
-print(f"Total reserves before function: {total_reserves_before} MW")
 
 thermal_gens, renewable_gens, demand, reserves = reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_percentage, HOURS)
 
-
-total_thermal_capacity_after = sum(gen['power_output_maximum'] for gen in thermal_gens.values())*HOURS
-print(f"Total thermal capacity after function: {total_thermal_capacity_after} MW")
-total_renewable_capacity_after = sum(sum(gen['power_output_maximum'][:HOURS]) for gen in renewable_gens.values())
-print(f"Total renewable capacity after function: {total_renewable_capacity_after} MW")
-total_demand_after = sum(demand)
-print(f"Total demand after function: {total_demand_after} MW")
-total_reserves_after = sum(reserves)
-print(f"Total reserves after function: {total_reserves_after} MW")
 
 num_thermal_gens = len(thermal_gens)
 num_renewable_gens = len(renewable_gens)
@@ -284,22 +269,56 @@ for w, gen in renewable_gens.items():
         pw[w, t].upper_bound = gen['power_output_maximum'][t_idx] #(24)
 
 print("Model setup complete.")
-print(f"Number of variables: {len(cqm.variables)}")
-print(f"Number of constraints: {len(cqm.constraints)}")
+num_variables = len(cqm.variables)
+print(f"Number of variables: {num_variables}")
+num_constraints = len(cqm.constraints)
+print(f"Number of constraints: {num_constraints}")
 
 # Solve the CQM
 print("Solving...")
+
+TIME_LIMIT = -1
 sampler = LeapHybridCQMSampler()
-solution = sampler.sample_cqm(cqm, time_limit=150)
+solution = sampler.sample_cqm(cqm, label="unit commitment")
+#solution = sampler.sample_cqm(cqm, time_limit=TIME_LIMIT, label="Unit commitment")
 print("Finished sampling...")
 
+# Total number of solutions
+total_solutions = len(solution)
+print(f"Total number of solutions found: {total_solutions}")
+
+# Filter for feasible solutions
 feasible_sampleset = solution.filter(lambda d: d.is_feasible)
-if len(feasible_sampleset) > 0:
+num_feasible_solutions = len(feasible_sampleset)
+print(f"Number of feasible solutions: {num_feasible_solutions}")
+
+
+# Check if any feasible solution is available
+if num_feasible_solutions > 0:
     best_solution = feasible_sampleset.first
-    print("Objective function value:", best_solution.energy)
+    best_solution_energy = best_solution.energy
+    print("Objective function value (best feasible):", best_solution_energy)
 else:
     print("No feasible solution found.")
+    best_solution = solution.first
+    best_solution_energy = best_solution.energy
+    print("Best objective function value (from infeasible solutions):", best_solution_energy)
 
+
+
+import csv 
+file_path="plot_data.csv"
+
+new_row = [total_solutions, num_feasible_solutions, best_solution_energy, TIME_LIMIT, HOURS, reduction_percentage, num_thermal_gens, num_renewable_gens, num_variables, num_constraints]
+
+with open(file_path, mode='a', newline='') as file:
+    writer = csv.writer(file)
+    writer.writerow(new_row)
+
+print("Row added successfully!")
+
+
+'''
 data_ext = json.load(open('C:/Users/Henrik/OneDrive - NTNU/skole/semester 11/Fordypnings-prosjekt/Prosjektoppgave/plots_dwave_test.json'))
 print(data_ext['vectors']['energy']['data'])
 energy_data_ext = data_ext['vectors']['energy']['data']
@@ -324,4 +343,4 @@ plt.ylim(1e0, 2e3)
 plt.legend(loc="upper left", fontsize=13)
 plt.savefig('C:/Users/Henrik/OneDrive - NTNU/skole/semester 11/Fordypnings-prosjekt/Prosjektoppgave/plots_dwave_test.pdf', bbox_inches="tight")
 plt.show()
-
+'''
