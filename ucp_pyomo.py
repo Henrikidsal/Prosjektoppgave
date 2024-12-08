@@ -6,7 +6,7 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 # Load data
-data_file = "rts_gmlc/2020-01-27.json"
+data_file = "rts_gmlc/2020-11-25.json"
 print('loading data')
 data = json.load(open(data_file, 'r'))
 
@@ -275,7 +275,7 @@ print("model setup complete")
 gurobi = SolverFactory('gurobi')
 
 print("solving")
-result = gurobi.solve(m, options={'MIPGap':0.0005}, tee=True)
+result = gurobi.solve(m, options={'MIPGap':0.0}, tee=True)
 
 num_variables = sum(1 for _ in m.component_data_objects(Var, active=True))
 print(f"Number of variables: {num_variables}")
