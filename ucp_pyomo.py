@@ -17,7 +17,7 @@ random.seed(19)
 HOURS = 24
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.95
+reduction_percentage = 0.97
 
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
@@ -73,27 +73,7 @@ def reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_
         # Remove the generators from the dictionary
         for w in renewable_removed:
             del renewable_gens[w]
-    '''
-    # Step 1: Update demand by subtracting removed renewable capacities per hour
-    demand_updated_1 = []
-    for t in range(HOURS):
-        updated_demand = demand[t] - removed_renewable_capacity[t]
-        demand_updated_1.append(max(updated_demand, 0))
-    
-    # Calculate total thermal capacity before removal
-    total_initial_thermal_capacity = sum(gen['power_output_maximum'] for gen in thermal_gens.values()) + removed_thermal_capacity
-    
-    # Calculate scale_factor based on thermal capacity removed
-    scale_factor = removed_thermal_capacity / total_initial_thermal_capacity
 
-    # Step 2: Update demand by applying the scale_factor
-    demand_updated_2 = [d * (1 - scale_factor) for d in demand_updated_1]
-    
-    # Update reserves by applying the scale_factor
-    reserves_updated = [r * (1 - scale_factor) for r in reserves]
-
-    return thermal_gens, renewable_gens, demand_updated_2, reserves_updated
-    '''
     # Calculate total capacities before removal
     total_initial_thermal_capacity = sum(gen['power_output_maximum'] for gen in thermal_gens.values()) + removed_thermal_capacity
     total_initial_renewable_capacity = sum(sum(gen['power_output_maximum'][:HOURS]) for gen in renewable_gens.values()) + sum(removed_renewable_capacity)
@@ -110,6 +90,7 @@ def reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_
     total_initial_demand = sum(demand)
     total_scaled_demand = sum(scaled_demand)
     reserve_scale_factor = total_scaled_demand / total_initial_demand if total_initial_demand > 0 else 1
+
     scaled_reserves = [r * reserve_scale_factor for r in reserves]
 
     return thermal_gens, renewable_gens, scaled_demand, scaled_reserves
