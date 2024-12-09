@@ -14,7 +14,7 @@ data = json.load(open(data_file, 'r'))
 random.seed(19)
 
 # How many HOURS do you want in the problem?
-HOURS = 48
+HOURS = 24
 
 # How much do you want to reduce generator capasity and demand?
 reduction_percentage = 0.89
