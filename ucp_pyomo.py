@@ -256,7 +256,7 @@ print("model setup complete")
 gurobi = SolverFactory('gurobi')
 
 print("solving")
-result = gurobi.solve(m, options={'MIPGap':0.0}, tee=False)
+result = gurobi.solve(m, options={'MIPGap':0.0}, tee=True)
 
 num_variables = sum(1 for _ in m.component_data_objects(Var, active=True))
 print(f"Number of variables: {num_variables}")
