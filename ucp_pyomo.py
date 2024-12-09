@@ -17,7 +17,7 @@ random.seed(19)
 HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.8
+reduction_percentage = 0.89
 
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
@@ -82,7 +82,7 @@ def reduce_generators(thermal_gens, renewable_gens, demand, reserves, reduction_
     total_removed_capacity = removed_thermal_capacity * HOURS + sum(removed_renewable_capacity)
     total_initial_capacity = total_initial_thermal_capacity * HOURS + total_initial_renewable_capacity
     total_scale_factor = total_removed_capacity / total_initial_capacity if total_initial_capacity > 0 else 0
-
+    total_scale_factor = min(total_scale_factor, 1.0)  # Ensure we don't scale negatively
     # Scale demand for every hour
     scaled_demand = [demand[t] * (1 - total_scale_factor) for t in range(HOURS)]
 
