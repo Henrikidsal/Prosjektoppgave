@@ -14,10 +14,10 @@ data = json.load(open(data_file, 'r'))
 random.seed(19)
 
 # How many HOURS do you want in the problem?
-HOURS = 12
+HOURS = 2
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.65
+reduction_percentage = 0.4
 
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
