@@ -17,7 +17,7 @@ random.seed(19)
 HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.65
+reduction_percentage = 0.0
 
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
