@@ -18,7 +18,6 @@ HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
 reduction_percentage = 0.0
-
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
 renewable_gens = data['renewable_generators']
@@ -268,3 +267,47 @@ m.solutions.load_from(result)
 print(f"Objective function value: {value(m.obj)}")
 
 
+#PLOTTING
+
+# Initialize lists to store results
+reserves_per_hour = []
+demand_per_hour = []
+output_thermal_gens = []
+output_renewable_gens = []
+output_spinning_reserves = []
+
+# Extract reserves per hour
+reserves_per_hour = [reserves[t] for t in range(HOURS)]
+
+# Extract demand per hour
+demand_per_hour = [demand[t] for t in range(HOURS)]
+
+# Extract thermal generators output per hour
+output_thermal_gens = [
+    sum(value(m.pg[g, t]) + thermal_gens[g]['power_output_minimum'] * value(m.ug[g, t])
+        for g in thermal_gens.keys())
+    for t in time_periods.keys()
+]
+
+# Extract renewable generators output per hour
+output_renewable_gens = [
+    sum(value(m.pw[w, t]) for w in renewable_gens.keys())
+    for t in time_periods.keys()
+]
+
+# Extract spinning reserves per hour
+output_spinning_reserves = [
+    sum(value(m.rg[g, t]) for g in thermal_gens.keys())
+    for t in time_periods.keys()
+]
+
+import csv
+file_path="plotting2.csv"
+
+new_row = [reserves_per_hour, demand_per_hour, output_thermal_gens, output_renewable_gens, output_spinning_reserves]
+
+with open(file_path, mode='a', newline='') as file:
+    writer = csv.writer(file)
+    writer.writerow(new_row)
+
+print("Row added successfully!")
