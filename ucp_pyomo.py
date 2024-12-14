@@ -255,7 +255,7 @@ print("model setup complete")
 gurobi = SolverFactory('gurobi')
 
 print("solving")
-result = gurobi.solve(m, options={'MIPGap':0.0}, tee=True)
+result = gurobi.solve(m, options={'MIPGap':0.001}, tee=True)
 
 num_variables = sum(1 for _ in m.component_data_objects(Var, active=True))
 print(f"Number of variables: {num_variables}")
@@ -301,7 +301,22 @@ output_spinning_reserves = [
     for t in time_periods.keys()
 ]
 
+output_thermal_generators = [
+    [value(m.pg[g, t]) + thermal_gens[g]['power_output_minimum'] * value(m.ug[g, t]) for t in time_periods.keys()]
+    for g in thermal_gens.keys()
+]
+
+on_off_status = [
+    [
+        value(m.ug[g, t]) - value(m.ug[g, t - 1]) if t > 1 else value(m.ug[g, t])
+        for t in time_periods.keys()
+    ]
+    for g in thermal_gens.keys()
+]
+
+
 import csv
+'''
 file_path="plotting2.csv"
 
 new_row = [reserves_per_hour, demand_per_hour, output_thermal_gens, output_renewable_gens, output_spinning_reserves]
@@ -309,5 +324,20 @@ new_row = [reserves_per_hour, demand_per_hour, output_thermal_gens, output_renew
 with open(file_path, mode='a', newline='') as file:
     writer = csv.writer(file)
     writer.writerow(new_row)
+''' 
 
-print("Row added successfully!")
+'''
+file_path = "plotting_output.csv"
+
+with open(file_path, mode='w', newline='') as file:  # Use 'w' to overwrite for clean data
+    writer = csv.writer(file)
+    writer.writerow(["Generator Output (Hour by Hour)"])  # Header row
+    writer.writerows(output_thermal_generators)  # Write each generator's hourly output on a new line
+'''
+file_path = "plottingOnOff.csv"
+
+with open(file_path, mode='w', newline='') as file:  # Use 'w' to overwrite for clean data
+    writer = csv.writer(file)
+    writer.writerow(["Generator on or off"])  # Header row
+    writer.writerows(on_off_status) 
+
