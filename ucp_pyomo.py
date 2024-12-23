@@ -13,7 +13,7 @@ data = json.load(open(data_file, 'r'))
 #INPUTS:
 random.seed(19)
 
-# How many HOURS do you want in the problem?
+# How many HOURS do you want in the problem? 
 HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
