@@ -22,7 +22,7 @@ random.seed(19)
 HOURS = 48
 
 # How much do you want to reduce generator capasity and demand?
-reduction_percentage = 0.0
+reduction_percentage = 0.95
 # Extract data for generators and time periods
 thermal_gens = data['thermal_generators']
 renewable_gens = data['renewable_generators']
@@ -269,10 +269,10 @@ print(f"Number of constraints: {num_constraints}")
 # Solve the CQM
 print("Solving...")
 
-TIME_LIMIT = -1
+TIME_LIMIT = 150
 sampler = LeapHybridCQMSampler()
-solution = sampler.sample_cqm(cqm, label="unit commitment")
-#solution = sampler.sample_cqm(cqm, time_limit=TIME_LIMIT, label="Unit commitment")
+#solution = sampler.sample_cqm(cqm, label="unit commitment")
+solution = sampler.sample_cqm(cqm, time_limit=TIME_LIMIT, label="Unit commitment")
 print("Finished sampling...")
 
 # Total number of solutions
@@ -299,7 +299,7 @@ else:
     print("Best objective function value (from infeasible solutions):", best_solution_energy)
 
 
-
+'''
 import csv
 file_path="PLOTS.csv"
 
@@ -310,3 +310,4 @@ with open(file_path, mode='a', newline='') as file:
     writer.writerow(new_row)
 
 print("Row added successfully!")
+'''

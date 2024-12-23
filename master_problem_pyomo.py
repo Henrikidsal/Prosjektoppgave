@@ -31,7 +31,6 @@ def Master_problem_pyomo(data, thermal_gens, renewable_gens, time_periods, gen_s
                         for g in thermal_gens
                     ) + master.theta)
 
-    #Constrains, only those with just binary variables, the constrains are 99% sure formulated correctly
     master.uptimet0 = Constraint(thermal_gens.keys())
     master.downtimet0 = Constraint(thermal_gens.keys())
     master.logicalt0 = Constraint(thermal_gens.keys())
